@@ -43,6 +43,8 @@ class Tree
 	// 3: clockwise 270 deg; 4: horizontal reflect; 5: horizontal reflect, then clockwise 90 deg...
 	Position_Rotation tag_rotate = Rotate_None;
 	
+	void string_manage_crlf(string& str, bool back_to_crlf);
+
 public:
 	const unsigned short board_size;
 	

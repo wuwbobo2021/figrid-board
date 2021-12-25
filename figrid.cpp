@@ -87,11 +87,12 @@ void Figrid::input(istream& ist)
 	}
 	
 	if (this->mode == Figrid_Mode_Library_Read) {
-		if (dcnt > 1) {
+		if (dcnt > 1 || this->ctree.current_depth() == 0) {
 			if (this->ctree.query(& this->crec))
 				this->cntmatch = this->ctree.current_depth();
-		} else if (this->ctree.query(crec.last_move()) != NULL)
-			this->cntmatch++;
+		} else
+			if (this->ctree.query(this->crec.last_move()))
+				this->cntmatch++;
 	} else if (this->mode == Figrid_Mode_Library_Write) {
 		this->ctree.write_recording(& this->crec);
 		this->cntmatch = this->crec.moves_count();
@@ -134,6 +135,8 @@ void Figrid::output_game_status(ostream& ost) const
 			ost << "White Wins";
 		else
 			ost << "Tie";
+	} else if (this->rule->game_status() & Game_Status_Foul) {
+		ost << "Foul " << this->rule->invalid_moves_count();
 	} else {
 		if (this->rule->game_status() & Game_Status_First_Mover)
 			ost << "Black " << this->crec.moves_count() + 1;
@@ -195,14 +198,16 @@ void Figrid::board_print(ostream& ost)
 	
 void Figrid::undo(unsigned short steps)
 {
+	if (steps == 0) return;
 	this->crec.undo(steps);
 	this->rule->check_recording();
 	
 	if (this->mode != Figrid_Mode_None) {
-		for (unsigned short i = 0; i < steps; i++)
-			this->ctree.pos_move_up();
-		if (this->crec.moves_count() < this->cntmatch)
+		if (this->crec.moves_count() < this->cntmatch) {
+			for (unsigned short i = 0; i < this->cntmatch - this->crec.moves_count(); i++)
+				this->ctree.pos_move_up();
 			this->cntmatch = this->crec.moves_count();
+		}
 	}
 }
 
@@ -221,6 +226,12 @@ void Figrid::clear()
 	}
 }
 
+void Figrid::rotate(Position_Rotation rotation)
+{
+	if (this->mode != Figrid_Mode_None) return;
+	this->crec.board_rotate(rotation);
+}
+
 void Figrid::rotate_into_tree()
 {
 	if (this->mode == Figrid_Mode_None) return;
@@ -233,6 +244,11 @@ void Figrid::tree_goto_fork()
 	if (this->mode == Figrid_Mode_None) return;
 	this->ctree.pos_goto_fork();
 	this->crec = ctree.get_current_recording();
+	if (! this->rule->check_recording()) { //an invalid route exists in the tree
+		for (unsigned short i = 0; i < this->rule->invalid_moves_count(); i++)
+			this->ctree.pos_move_up();
+		this->rule->undo_invalid_moves();
+	}
 }
 
 void Figrid::tree_delete_node()

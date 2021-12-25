@@ -36,7 +36,7 @@ struct Move
 {
 	unsigned char x: 5;
 	unsigned char y: 5;
-	bool swap: 1;
+	bool swap: 1; //if the current mover chooses the color of the next move, it's false; otherwise it's true
 	
 	Move();
 	Move(unsigned char nx, unsigned char ny);

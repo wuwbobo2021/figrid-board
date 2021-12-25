@@ -60,6 +60,7 @@ public:
 	void undo(unsigned short steps = 1);
 	void goback(unsigned short num);
 	void clear();
+	void rotate(Position_Rotation rotation);
 	void rotate_into_tree();
 	void tree_goto_fork();
 	void tree_delete_node();

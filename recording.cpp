@@ -230,7 +230,7 @@ bool Recording::input(istream& ist)
 	while (ist && (! ist.eof())) {
 		ist.getline(buf, llmax);
 		if (strlen(buf) == 0) continue;
-		if (buf[0] == '[') {pgn = true; continue;}
+		if (buf[0] == '[') {pgn = true; continue;} //TODO: improve the class `Recording` to load more info from PGN texts
 		str += (string) buf; str += " ";
 		if (!pgn) break;
 	}
@@ -244,16 +244,18 @@ bool Recording::input(istream& ist)
 				y *= 10;
 				y += (c - 0x30);
 			} else
-				if (i < str.length() - 1 && str[i + 1] == '-') return true; //TODO: load more info from PGN
+				if (i < str.length() - 1 && str[i + 1] == '-') return true;
 		} else {
 			if (x != 0 && y != 0) {
 				if (! this->domove(Move(x - 1, y - 1))) return false;
 				x = 0; y = 0;
 			}
 			if (0x61 <= c && c < 0x61 + this->board_size) { //lower case letter
-				if (c == 'b' && i + 4 <= str.length() - 1 && str[i + 1] == 'l') {
+				// it's second mover's choice in 4th item, and in case of the second mover then choose to do two moves,
+				// the next move will be white, so it's still a swap choice for the first mover to choose black in 6th item.
+				if (this->count == 4 - 1 && c == 'b' && i + 4 <= str.length() - 1 && str[i + 1] == 'l') {
 					this->domove(Move(true)); i += 4; continue;
-				} else if (c == 'w' && i + 4 <= str.length() - 1 && str[i + 1] == 'h') {
+				} else if (this->count == 6 - 1 && c == 'w' && i + 4 <= str.length() - 1 && str[i + 1] == 'h') {
 					this->domove(Move(false)); i += 4; continue;
 				}
 				x = c - 0x61 + 1;
@@ -274,18 +276,21 @@ void Recording::output(ostream& ost, bool show_round_num) const
 {
 	if (this->count < 1) {ost << "(Empty Recording)"; return;}
 	
-	bool b = true;
+	bool black = true;
 	for (unsigned short i = 0; i < this->count; i++)
 	{
-		if (b) {
+		if (black) {
 			if (i > 0) cout << " ";
-			if (show_round_num)
-				ost << to_string((i + 1)/2 + 1) + ". ";
+			if (show_round_num) ost << to_string((i + 1)/2 + 1) + ". ";
 		} else
 			cout << " ";
+
+		if (this->moves[i].position_null() && (i == 4 - 1 || i == 6 - 1))
+			ost << moves[i].swap? "black" : "white";
+		else
+			ost << (string) this->moves[i];
 		
-		ost << (string) this->moves[i];
-		b = !b;
+		black = !black;
 	}
 }
 

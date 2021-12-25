@@ -23,28 +23,32 @@ Figrid_TUI::~Figrid_TUI()
 
 void Figrid_TUI::output_help()
 {
-	cout << "undo, u [count]\tUndo move(s) in current recording\n"
-	     << "goback <num>\tGo back to <num>th move\n"
-	     << "clear, root, r\tClear current recording\n";
+	cout << "undo, u [count]\t\tUndo move(s) in current recording\n"
+	     << "goback <num>\t\tGo back to <num>th move\n"
+	     << "clear, root, r\t\tClear current recording\n";
 	if (this->figrid->current_mode() != Figrid_Mode_None)
-		cout << "rotate\t\tRotate current board to match with existing route in the library\n"
-		     << "down, d\t\tGoto the next fork in the tree\n";
-	
-	cout << "open\t\tOpen PGN or Renlib file\n";
-	if (this->figrid->current_mode() != Figrid_Mode_Library_Write)
-		cout << "write\t\tSwitch to library writing mode\n";
+		cout << "rotate\t\t\tRotate current board to match with existing route in the library\n"
+		     << "down, d\t\t\tGoto the next fork in the tree\n";
 	else
-		cout << "mark [start]\tMark current node\n"
-		     << "unmark [start]\tUnmark current node\n"
-		     << "comment\t\tSet comment for current node\n"
-		     << "uncomment\tUncomment current node\n"
-		     << "delete\t\tDelete current node and go back to parent node\n";
+		cout << "rotate <d>\t\tRotate current board. <d> can be +(-) 90, 180, 270\n"
+		     << "reflect, flip <d>\tReflect current board. <d> can be 'h' or 'v'\n";
+	
+	cout << "open\t\t\tOpen PGN or Renlib file\n";
+	if (this->figrid->current_mode() != Figrid_Mode_Library_Write)
+		cout << "write\t\t\tSwitch to library writing mode\n";
+	else
+		cout << "mark [start]\t\tMark current node\n"
+		     << "unmark [start]\t\tUnmark current node\n"
+		     << "comment\t\t\tSet comment for current node\n"
+		     << "uncomment\t\tUncomment current node\n"
+		     << "delete\t\t\tDelete current node and go back to parent node\n"
+		     << "lock\t\t\tSwitch to library reading mode\n";
 	
 	if (this->figrid->current_mode() != Figrid_Mode_None)
-		cout << "save\t\tSave current tree as Renlib file\n"
-		     << "close\t\tClose current tree\n";
+		cout << "save\t\t\tSave current tree as Renlib file\n"
+		     << "close\t\t\tDiscard current tree\n";
 	
-	cout << "exit, quit\tExit this program\n";
+	cout << "exit, quit\t\tExit this program\n";
 }
 
 void Figrid_TUI::execute(string& strin)
@@ -67,15 +71,38 @@ void Figrid_TUI::execute(string& strin)
 	} else if (command == "clear" || command == "root" || command == "r") {
 		this->figrid->clear();
 	} else if (command == "open") {
-		sstr >> param;
+		if (this->figrid->current_mode() == Figrid_Mode_Library_Write) {
+			cout << "Discard current data and exit? (y/n) ";
+			cin >> param; if (param != "y") return;
+		}
+		param = ""; sstr >> param;
 		if (! this->figrid->load_file(param)) {
-			cout << "Failed to load file.";
-			terminal_pause();
+			cout << "Failed to load file. "; terminal_pause();
 		}
 	} else if (command == "write") {
-		this->figrid->set_mode(Figrid_Mode_Library_Write);	
+		this->figrid->set_mode(Figrid_Mode_Library_Write);
+	} else if (command == "lock") {
+		if (this->figrid->current_mode() == Figrid_Mode_Library_Write)
+			this->figrid->set_mode(Figrid_Mode_Library_Read);
 	} else if (command == "rotate") {
-		this->figrid->rotate_into_tree();
+		if (this->figrid->current_mode() != Figrid_Mode_None)
+			this->figrid->rotate_into_tree();
+		else {
+			Position_Rotation rotation;
+			sstr >> param_num;
+			switch (param_num) {
+				case 90: case -270: rotation = Rotate_Clockwise; break;
+				case 180: case -180: rotation = Rotate_Central_Symmetric; break;
+				case -90: case 270: rotation = Rotate_Counterclockwise; break;
+			}
+			this->figrid->rotate(rotation);
+		}
+	} else if (command == "reflect" || command == "flip") {
+		if (this->figrid->current_mode() != Figrid_Mode_None) return;
+		sstr >> param;  if (param.length() < 1) return;
+		char ch = param[0];
+		if (ch == 'h') this->figrid->rotate(Reflect_Horizontal);
+		else if (ch == 'v') this->figrid->rotate(Reflect_Vertical);
 	} else if (command == "down" || command == "d") {
 		this->figrid->tree_goto_fork();	
 	} else if (command == "mark") {
@@ -95,13 +122,14 @@ void Figrid_TUI::execute(string& strin)
 		else
 			cout << "Input comment, ";
 		cout << "then enter \"end\" to continue:\n";
-		const unsigned short llmax = 1024; char str[llmax]; bool multiline = false;
+		
+		const unsigned short llmax = 1024; char str[llmax]; unsigned short lines_count = 0;
+		string new_comment = "";
 		while (cin.getline(str, llmax)) {
 			if ((string) str == "end") break;
-			if (multiline) comment += '\n';
-			comment += (string) str;
-			multiline = true;
+			new_comment += (string) str;  lines_count++;
 		}
+		comment += ((lines_count > 1)? "\n" : ((comment == "")? "" : " ")) + new_comment;
 		this->figrid->node_set_comment(comment);
 	} else if (command == "uncomment") {
 		string strempty = "";
@@ -123,7 +151,7 @@ void Figrid_TUI::execute(string& strin)
 			this->figrid->set_mode(Figrid_Mode_Library_Read);
 	} else if (command == "close") {
 		this->figrid->set_mode(Figrid_Mode_None);
-	} else if (command == "help") {
+	} else if (command == "help" || command == "h" || command == "?") {
 		terminal_clear();
 		this->output_help();
 		terminal_pause();

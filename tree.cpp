@@ -48,6 +48,23 @@ struct Renlib_Node //it corresponds with every node in a Renlib file
 };
 
 
+void Tree::string_manage_crlf(string& str, bool back_to_crlf = false)
+{
+	string strfind = back_to_crlf? "\n" : "\r\n"; //problem: don't call this function for double times
+	size_t strfind_len = back_to_crlf? 1 : 2;
+	string strto = back_to_crlf? "\r\n" : "\n";
+	size_t strto_len = back_to_crlf? 2 : 1;
+	
+	size_t pos = 0;
+	while (true) {
+		pos = str.find(strfind, pos);
+		if (pos == string::npos) break;
+		str.replace(pos, strfind_len, strto);
+		pos += strto_len;
+	}
+}
+
+
 Tree::Tree(unsigned short board_sz): board_size(board_sz), crec(board_sz) //the recording is initialized here
 {
 	this->proot = new Node;
@@ -208,7 +225,7 @@ bool Tree::pos_move_left()
 {
 	if (this->cdepth < 1) return false;
 	
-	Node* p = this->seq[this->cdepth - 1];
+	Node* p = this->seq[this->cdepth - 1]->down; //goto the eldest brother of current node
 	while (p != NULL && p->right != this->ppos)
 		p = p->right;
 	
@@ -265,22 +282,37 @@ void Tree::delete_current_pos()
 {
 	if (this->ppos == NULL) return;
 	bool del_root = (this->ppos == this->proot);
+	if (! del_root) {
+		Node* pleft = NULL;
+		if (this->pos_move_left()) {pleft = this->ppos; this->pos_move_right();}
+		
+		if (pleft)
+			pleft->right = this->ppos->right;
+		else {
+			if (this->ppos->right == NULL)
+				this->seq[cdepth - 1]->down = NULL;
+			else
+				this->seq[cdepth - 1]->down = this->ppos->right;
+		}
+	}
 	
 	//delete all nodes in postorder sequence
-	Node* ptmp;
+	Node* psubroot = this->ppos; Node* ptmp;
 	stack<Node*> node_stack;
 	while (1) {
 		if (this->ppos->down != NULL) {
 			node_stack.push(this->ppos);
 			this->ppos = this->ppos->down;
 		} else {
+			if (this->ppos == psubroot) {delete this->ppos;  break;}
+			
 			if (this->ppos->right != NULL) { //delete current node and goto right of it
 				ptmp = this->ppos->right;
-				delete[] this->ppos;
+				delete this->ppos;
 				this->ppos = ptmp;
 			} else { //delete current node and go up
-				delete[] this->ppos;
-				if (node_stack.empty()) break; //the root is deleted
+				delete this->ppos;
+				if (node_stack.empty()) break;
 				this->ppos = node_stack.top(); node_stack.pop();
 				this->ppos->down = NULL; //mark
 			}
@@ -347,14 +379,17 @@ unsigned short Tree::query(const Recording* record)
 		vector<Recording> rec; unsigned short mcnt[8];
 		for (unsigned char i = 0; i < 8; i++) //create 8 empty recordings
 			rec.push_back(Recording(this->board_size));
-		unsigned char r = tag_rotate;
-		while (r < 8) { //if tag_rotate != 0, then only execute for once
+		unsigned char r = this->tag_rotate;
+		while (r < 8) { //if tag_rotate != 0 originally, then only do this for once
 			rec[r] = *record;
 			rec[r].board_rotate((Position_Rotation) r);
+			
 			this->pos_goto_root();
 			mcnt[r] = this->query((& rec[r]));
-			if (mcnt[r] == rec[0].moves_count()) return mcnt[r];
-			
+			if (mcnt[r] == rec[r].moves_count()) { //completely matched
+				this->tag_rotate = (Position_Rotation) r;
+				return mcnt[r];
+			}
 			if (this->tag_rotate != 0) return mcnt[r]; //it's already rotated last time, don't do more useless things
 			r++;
 		}
@@ -418,50 +453,46 @@ bool Tree::load_renlib(const string& file_path)
 	if (this->board_size != 15) throw Invalid_Board_Size_Exception();
 	if (! Tree::is_renlib_file(file_path)) return false;
 	
+	ifstream ifs(file_path, ios_base::binary | ios_base::in);
+	if (! ifs.is_open()) return false;
+	ifs.ignore(Renlib_Header_Size);
+	
 	//make sure the loader begins with an empty tree
 	this->pos_goto_root();
 	this->delete_current_pos();
 	this->ppos = this->proot = new Node;
 	
-	//read file into memory
-	int lib_file_size = file_size(file_path);
-	char* file_data = new char[lib_file_size];
-	ifstream ifs(file_path, ios_base::binary | ios_base::in);
-	if (! ifs.is_open()) return false;
-	ifs.read(file_data, lib_file_size);
-	ifs.close();
-	
 	//read the nodes in preorder to reconstruct the tree
-	Renlib_Node* pread = (Renlib_Node*)(file_data + 20); //skip Renlib header
-
-	//make sure the root has a null position
-	this->new_descendent();
-	this->pos_move_down();
-	
-	if (pread->x == 0 || pread->y == 0) //the root is a null move (so called non-stantard)
-		pread++;
-	
-	stack<Node*> node_stack; Node* pnextpos;
-	while ((char*) pread < file_data + lib_file_size) {
-		pnextpos = new Node; //in which the `pos` is initialized as a null position
-		if (pnextpos == NULL) {delete[] file_data; return false;} //Out of memory
+	Renlib_Node rnode; stack<Node*> node_stack; Node* pnextpos; bool root = true;
+	while (ifs && (! ifs.eof())) {
+		ifs.read((char*) &rnode, 2); //read a node
 		
-		if (pread->x != 0 || pread->y != 0) {
-			//convert x and y into Fiffle_Board::Move format, in which (0, 0) represents a1.
-			this->ppos->pos.x = pread->x - 1;
-			this->ppos->pos.y = 15 - pread->y - 1;
+		if (root && (rnode.x != 0 || rnode.y != 0)) {
+			//make sure the root of the reconstructed tree has a null position
+			this->new_descendent();
+			this->pos_move_down();
 		}
-		this->ppos->marked = pread->mark;
-		this->ppos->marked_start = pread->start;
+		root = false;
+		
+		pnextpos = new Node; //in which the `pos` is initialized as a null position
+		if (pnextpos == NULL) return false; //Out of memory
+		
+		if (rnode.x != 0 || rnode.y != 0) {
+			//convert x and y into Fiffle_Board::Move format, in which (0, 0) represents a1.
+			this->ppos->pos.x = rnode.x - 1;
+			this->ppos->pos.y = 15 - rnode.y - 1;
+		}
+		this->ppos->marked = rnode.mark;
+		this->ppos->marked_start = rnode.start;
 		
 		//Reference: Data Structure Techniques by Thomas A. Standish, 3.5.2, Algorithm 3.4
 		//The top of the stack will point to the parent node of the next node, which is its left descendent.
-		if (pread->has_sibling)
+		if (rnode.has_sibling)
 			node_stack.push(this->ppos);
 		
 		//If the leaf is not the rightmost under the depth 1 subtree, it will be popped out just after being pushed in;
 		//or else, it means that the parent will be popped out, and the next node will be the parent's right sibling.
-		if (pread->is_leaf) {
+		if (rnode.is_leaf) {
 			if (! node_stack.empty()) {
 				node_stack.top()->right = pnextpos; node_stack.pop();
 			} else
@@ -469,31 +500,29 @@ bool Tree::load_renlib(const string& file_path)
 		} else
 			this->ppos->down = pnextpos;
 		
-		if (pread->comment || pread->old_comment) {
+		if (rnode.comment || rnode.old_comment) {
 			this->ppos->has_comment = true;
-			
-			char* pstr = (char*) (pread + 1); //the string ends with '\0'
-			this->comments.push_back(pstr); //to C++ string
+			string str = ""; char ch;
+			while (ifs && (! ifs.eof())) {
+				ifs.read(&ch, 1);  if (ch == '\0') break;
+				str += ch;
+			}
+			string_manage_crlf(str); //replace "\r\n" with '\n'
+			this->comments.push_back(str); //to C++ string
 			this->ppos->tag_comment = this->comments.size() - 1;
 			
 			//goto the byte right of the last '\0'
-			while (*pstr != '\0') pstr++;
-			while (*pstr == '\0') pstr++;
-			
-			pread = (Renlib_Node*) pstr; //continue to read the next node
-		} else
-			pread++;
-		
+			while (ifs && (! ifs.eof())) {
+				ifs.read(&ch, 1);
+				if (ch != '\0') {ifs.putback(ch); break;}
+			}
+		}
+				
 		this->ppos = pnextpos; //this will not happen if current node is the last node, see the 'break;' above
 	}
 	
-	bool comp = true;
-	if (this->ppos != pnextpos) //this should be true, but it prevents invalid pointer error caused by broken file
-		delete pnextpos;
-	else
-		comp = false;
-	
-	delete[] file_data;
+	bool comp = (this->ppos != pnextpos); //this should be true if the file is not broken
+	if (comp) delete pnextpos;
 	this->pos_goto_root();
 	return comp;
 }
@@ -516,10 +545,7 @@ bool Tree::save_renlib(const string& file_path)
 	Recording rec_back = this->crec;
 	
 	this->ppos = this->proot;
-	stack<Node*> node_stack;  Renlib_Node rnode; char* prnode = (char*) &rnode;
-	if (this->proot->down != NULL && this->proot->down->pos == Move(7, 7) && this->proot->down->right == NULL)
-		this->ppos = this->proot->down; //so called standard format in Renlib
-	
+	stack<Node*> node_stack;  Renlib_Node rnode;
 	rnode.old_comment = rnode.no_move = rnode.extension = false; //reserved?
 	
 	bool tag_end = false;
@@ -527,18 +553,19 @@ bool Tree::save_renlib(const string& file_path)
 		if (! this->ppos->pos.position_null()) {
 			rnode.x = this->ppos->pos.x + 1;
 			rnode.y = 15 - (this->ppos->pos.y + 1);
-			rnode.comment = this->ppos->has_comment;
-			rnode.mark = this->ppos->marked;
-			rnode.start = this->ppos->marked_start;
-			rnode.has_sibling = (this->ppos->right != NULL);
-			rnode.is_leaf = (this->ppos->down == NULL);
-		} else
-			prnode[0] = prnode[1] = 0x00;
+		} else rnode.x = rnode.y = 0;
+		
+		rnode.comment = this->ppos->has_comment;
+		rnode.mark = this->ppos->marked;
+		rnode.start = this->ppos->marked_start;
+		rnode.has_sibling = (this->ppos->right != NULL);
+		rnode.is_leaf = (this->ppos->down == NULL);
 		
 		ofs.write((char*) &rnode, sizeof(rnode));
 		if (this->ppos->has_comment) {
-			string& cmt = this->comments[this->ppos->tag_comment];
-			ofs.write(cmt.c_str(), cmt.length() + 1); // + 1 to write '\0'
+			string str = this->comments[this->ppos->tag_comment];
+			string_manage_crlf(str, true); //replace '\n' with "\r\n"
+			ofs.write(str.c_str(), str.length() + 1); // + 1 to write '\0'
 		}
 		
 		//go through the nodes in preorder sequence

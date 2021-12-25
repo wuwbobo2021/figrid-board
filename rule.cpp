@@ -27,6 +27,11 @@ Game_Status Rule::game_status() const
 	return this->cstatus;
 }
 
+unsigned short Rule::invalid_moves_count() const
+{
+	return this->invalid_count;
+}
+
 unsigned short Rule::undo_invalid_moves()
 {
 	if (this->crec == NULL) return 0;

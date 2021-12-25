@@ -38,6 +38,7 @@ protected:
 public:
 	void set_recording(Recording* rec);
 	Game_Status game_status() const;
+	unsigned short invalid_moves_count() const;
 	virtual bool domove(Move mv) = 0;
 	virtual bool check_recording() = 0;
 	unsigned short undo_invalid_moves();
