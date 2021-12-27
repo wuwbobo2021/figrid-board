@@ -1,10 +1,13 @@
 # Figrid
-##Version 0.10 "Innocent Coincidence"
+Version 0.10 "Innocent Coincidence"
+
 A recording software for the Five-in-a-Row game which can run on Linux shell and is compatible with Renlib.
+
 (Original Renlib software: <http://www.renju.se/renlib>, <https://www.github.com/gomoku/Renlib>, by Frank Arkbo, Sweden)
+
 If you have found bugs in this program, or you have any suggestion (especially suggestions about adding comments), please pull an issue, or contact me.
 
-##Main Features
+## Main Features
 1. A text based user interface showing the game board, supporting undo, goback and rotation;
 2. Reading game records from input and from PGN files;
 3. Creating, opening and saving Renlib library file;
