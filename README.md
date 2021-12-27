@@ -22,7 +22,7 @@ g++ -o <executable path> recording.cpp tree.cpp rule.cpp rule_gomoku_original.cp
 If you have failed to build it on Windows MinGW, please report the problem.
 
 ## Known problems
-This program cannot process Chinese comments in Renlib, and Chinese comments in Unicode created by this program cannot be read by the original Renlib program.
+1. This program cannot process Chinese comments in Renlib, and Chinese comments in Unicode created by this program cannot be read by the original Renlib program.
 
 ## TODO
 1. This program should be able to communicate with external engines (like AlphaGomoku: <https://github.com/MaciejKozarzewski/AlphaGomoku>) through two pipes, one read and one write, probably this couldn't be done using C/C++ standard library functions;
