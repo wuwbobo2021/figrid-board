@@ -75,8 +75,7 @@ bool Rule_Gomoku_Original::check_recording()
 		this->cstatus = (Game_Status) (Game_Status_First_Mover | Game_Status_Black);
 		return true;
 	}
-	if (this->cstatus & Game_Status_Ended) return true;
-	if (this->cstatus & Game_Status_Foul) return false;
+	this->cstatus = (Game_Status) 0;
 	
 	unsigned short cnt; //count of moves checked
 	Recording rec = * this->crec; const Move* p = rec.recording_ptr();

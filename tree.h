@@ -43,7 +43,8 @@ class Tree
 	// 3: clockwise 270 deg; 4: horizontal reflect; 5: horizontal reflect, then clockwise 90 deg...
 	Position_Rotation tag_rotate = Rotate_None;
 	
-	void string_manage_crlf(string& str, bool back_to_crlf);
+	unsigned short fixed_query(const Recording* recording);
+	void string_manage_multiline(string& str, bool back_to_crlf);
 
 public:
 	const unsigned short board_size;
@@ -77,7 +78,7 @@ public:
 	void delete_current_pos(); //and goto root
 	
 	Node* query(Move pos); //find in descendents of current node, goto the position if found, return NULL if not found
-	unsigned short query(const Recording* record); //and goto the last move existing in the tree. the query can be rotated.
+	unsigned short query(const Recording* record); //check from root and goto the last existing move, and rotation is possible
 	void write_recording(const Recording* record); //load a recording
 	Position_Rotation query_rotate_tag() const;
 	void clear_rotate_tag();

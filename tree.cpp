@@ -48,23 +48,6 @@ struct Renlib_Node //it corresponds with every node in a Renlib file
 };
 
 
-void Tree::string_manage_crlf(string& str, bool back_to_crlf = false)
-{
-	string strfind = back_to_crlf? "\n" : "\r\n"; //problem: don't call this function for double times
-	size_t strfind_len = back_to_crlf? 1 : 2;
-	string strto = back_to_crlf? "\r\n" : "\n";
-	size_t strto_len = back_to_crlf? 2 : 1;
-	
-	size_t pos = 0;
-	while (true) {
-		pos = str.find(strfind, pos);
-		if (pos == string::npos) break;
-		str.replace(pos, strfind_len, strto);
-		pos += strto_len;
-	}
-}
-
-
 Tree::Tree(unsigned short board_sz): board_size(board_sz), crec(board_sz) //the recording is initialized here
 {
 	this->proot = new Node;
@@ -135,13 +118,13 @@ void Tree::print_current_board(ostream& ost) const
 	
 	Move dots[this->current_degree()];
 	if (this->ppos != NULL && this->ppos->down != NULL) {
-		unsigned short cnt = 0; Node* p = this->ppos->down;
-		while (p != NULL) {
-			dots[cnt++] = p->pos;
-			dots[cnt].rotate(this->board_size, tag_rotate, true); //rotate back
+		Node* p = this->ppos->down;
+		for (unsigned short i = 0; i < this->current_degree(); i++) {
+			dots[i] = p->pos;
+			dots[i].rotate(this->board_size, tag_rotate, true); //rotate back
 			p = p->right;
 		}
-		rec.board_print(ost, cnt, dots);
+		rec.board_print(ost, this->current_degree(), dots);
 	} else
 		rec.board_print(ost);
 }
@@ -347,15 +330,17 @@ Node* Tree::query(Move pos)
 	return NULL;
 }
 
-unsigned short Tree::query(const Recording* record)
+unsigned short Tree::fixed_query(const Recording* record) //private, doesn't involve rotation
 {
 	if (record->moves_count() < 1) return 0;
 	if (this->proot->down == NULL) return 0; //the tree is empty
-	if (this->ppos == NULL) this->pos_goto_root();
+	
+	Position_Rotation tag_back = this->tag_rotate;
+	this->pos_goto_root(); this->tag_rotate = tag_back;
 	
 	const Move* prec = record->recording_ptr();
-	
 	Node* pq = this->query(prec[0]);
+	
 	if (pq != NULL) { //the first move in this partial recording is a descendent of current position in the tree
 		unsigned short mcnt;
 		for (mcnt = 1; mcnt < record->moves_count(); mcnt++) {
@@ -372,37 +357,41 @@ unsigned short Tree::query(const Recording* record)
 				{this->pos_move_up(); return mcnt;}
 		} //mcnt++
 		return mcnt;
-	} else {
-		if (this->ppos == this->proot) return 0;
-		
-		//check from root
-		vector<Recording> rec; unsigned short mcnt[8];
-		for (unsigned char i = 0; i < 8; i++) //create 8 empty recordings
-			rec.push_back(Recording(this->board_size));
-		unsigned char r = this->tag_rotate;
-		while (r < 8) { //if tag_rotate != 0 originally, then only do this for once
-			rec[r] = *record;
-			rec[r].board_rotate((Position_Rotation) r);
-			
-			this->pos_goto_root();
-			mcnt[r] = this->query((& rec[r]));
-			if (mcnt[r] == rec[r].moves_count()) { //completely matched
-				this->tag_rotate = (Position_Rotation) r;
-				return mcnt[r];
-			}
-			if (this->tag_rotate != 0) return mcnt[r]; //it's already rotated last time, don't do more useless things
-			r++;
-		}
-		
-		unsigned char idx = 0;
-		for (r = 0; r < 8; r++)
-			if (mcnt[r] > mcnt[idx]) idx = r;
-		
-		this->tag_rotate = (Position_Rotation) idx;
-		this->pos_goto_root();
-		return this->query(& rec[idx]);
-	}
+	} else
+		return 0;
 }
+
+unsigned short Tree::query(const Recording* record) //it might set the rotate tag
+{
+	if (record->moves_count() < 1) return 0;
+	if (this->proot->down == NULL) return 0; //the tree is empty
+	
+	vector<Recording> rec; unsigned short mcnt[8];
+	for (unsigned char i = 0; i < 8; i++) { //create 8 empty recordings
+		rec.push_back(Recording(this->board_size));  mcnt[i] = 0;
+	}
+	unsigned char r = this->tag_rotate;
+	while (r < 8) { //if tag_rotate != 0 originally, then only do this for once
+		rec[r] = *record;
+		rec[r].board_rotate((Position_Rotation) r);
+		mcnt[r] = this->fixed_query(& rec[r]);
+		if (mcnt[r] == rec[r].moves_count()) { //completely matched
+			this->tag_rotate = (Position_Rotation) r;
+			return mcnt[r];
+		}
+		if (this->tag_rotate != Rotate_None) return mcnt[r]; //it's already rotated last time, don't do more useless things
+		r++;
+	}
+	
+	unsigned char idx = 0;
+	for (r = 0; r < 8; r++)
+		if (mcnt[r] > mcnt[idx]) idx = r;
+	
+	if (mcnt[idx] == 0) return 0;
+	this->tag_rotate = (Position_Rotation) idx;
+	return this->fixed_query(& rec[idx]);
+}
+
 
 Position_Rotation Tree::query_rotate_tag() const
 {
@@ -416,20 +405,21 @@ void Tree::clear_rotate_tag()
 
 void Tree::write_recording(const Recording* record)
 {
-	this->pos_goto_root();
-	
-	this->tag_rotate = Rotate_None; //rerotate
-	unsigned short excnt = this->query(record);
-	if (excnt == record->moves_count()) return;
+	if (record->moves_count() == 0) return;
 	
 	Recording rec = *record;
+	this->pos_goto_root(); //involves clearing rotate tag (for rerotation check)
+	unsigned short excnt = this->query(&rec); //count of existing moves (begins from root)
+	if (excnt == rec.moves_count()) return; //nothing to write
 	rec.board_rotate(this->tag_rotate);
+	
 	const Move* prec = rec.recording_ptr();
-	for (unsigned short i = excnt; i < record->moves_count(); i++) {
+	for (unsigned short i = excnt; i < rec.moves_count(); i++) {
+		if (! this->crec.domove(prec[i])) {rec.goback(i); this->crec = rec; return;}
+		
 		this->ppos = this->new_descendent(prec[i]);
 		if (this->ppos == NULL) return; //Out of memory
 		this->seq[++this->cdepth] = this->ppos;
-		this->crec.domove(prec[i]);
 	}
 }
 
@@ -446,6 +436,26 @@ bool Tree::is_renlib_file(const string& file_path)
 		if ((unsigned char) head[i] != Renlib_Header[i]) return false;
 	
 	return true;
+}
+
+void Tree::string_manage_multiline(string& str, bool back_to_crlf = false) //private
+{
+	//0x08 "\b" is the multiline comment tag at the end of first comment line in Renlib
+	size_t pos = str.find(back_to_crlf? "\n" : "\b"); 
+	if (pos == string::npos) return;
+	str.replace(pos, 1, back_to_crlf? "\b" : "\n");  pos++;
+	
+	string strfind = back_to_crlf? "\n" : "\r\n"; //problem: don't call this function for double times
+	size_t strfind_len = back_to_crlf? 1 : 2;
+	string strto = back_to_crlf? "\r\n" : "\n";
+	size_t strto_len = back_to_crlf? 2 : 1;
+	
+	while (true) {
+		pos = str.find(strfind, pos);
+		if (pos == string::npos) break;
+		str.replace(pos, strfind_len, strto);
+		pos += strto_len;
+	}
 }
 
 bool Tree::load_renlib(const string& file_path)
@@ -507,7 +517,7 @@ bool Tree::load_renlib(const string& file_path)
 				ifs.read(&ch, 1);  if (ch == '\0') break;
 				str += ch;
 			}
-			string_manage_crlf(str); //replace "\r\n" with '\n'
+			string_manage_multiline(str); //replace "\r\n" with '\n'
 			this->comments.push_back(str); //to C++ string
 			this->ppos->tag_comment = this->comments.size() - 1;
 			
@@ -564,7 +574,7 @@ bool Tree::save_renlib(const string& file_path)
 		ofs.write((char*) &rnode, sizeof(rnode));
 		if (this->ppos->has_comment) {
 			string str = this->comments[this->ppos->tag_comment];
-			string_manage_crlf(str, true); //replace '\n' with "\r\n"
+			string_manage_multiline(str, true); //replace '\n' with "\r\n"
 			ofs.write(str.c_str(), str.length() + 1); // + 1 to write '\0'
 		}
 		

@@ -6,6 +6,7 @@
 // Released Under GPL 3.0 License.
 
 #include <cstring>
+#include <cctype>
 #include "recording.h"
 
 using namespace std;
@@ -55,8 +56,10 @@ bool Move::position_null() const
 
 void Move::rotate(unsigned char board_size, Position_Rotation rotation, bool rotate_back)
 {
+	if (this->position_null()) return;
+	
 	// Notice: the topmost x and rightmost y are both board_size - 1.
-	if (rotation >> 2) //Reflect_Horizontal bit is true
+	if (!rotate_back && rotation >> 2) //Reflect_Horizontal bit is true
 		this->x = (board_size - 1) - this->x;
 	
 	unsigned char ro = rotation & 3; //get two lower bits
@@ -72,6 +75,9 @@ void Move::rotate(unsigned char board_size, Position_Rotation rotation, bool rot
 		case Rotate_Central_Symmetric:
 			this->x = (board_size - 1) - xo;  this->y = (board_size - 1) - yo;  break;
 	}
+	
+	if (rotate_back && rotation >> 2)
+		this->x = (board_size - 1) - this->x;
 }
 
 
@@ -176,6 +182,16 @@ bool Recording::domove(Move mv)
 	return true;
 }	
 
+bool Recording::append(const Recording* record)
+{
+	bool suc = true;
+	const Move* prec = record->recording_ptr();
+	for (unsigned short i = 0; i < record->moves_count(); i++)
+		if (! this->domove(prec[i])) suc = false;
+	
+	return suc;
+}
+
 bool Recording::undo(unsigned short steps)
 {
 	if (steps > this->count || steps < 0) return false;
@@ -239,10 +255,10 @@ bool Recording::input(istream& ist)
 	for(unsigned short i = 0; i <= str.length() - 1; i++) {
 		c = str[i];
 		
-		if (0x30 <= c && c < 0x30 + 10) { //numeric. see ASCII table for reference
+		if (isdigit(c)) {
 			if (x > 0) { //if x is 0, c should be sequence(round) number
 				y *= 10;
-				y += (c - 0x30);
+				y += (c - 0x30); //see ASCII table
 			} else
 				if (i < str.length() - 1 && str[i + 1] == '-') return true;
 		} else {
@@ -250,18 +266,18 @@ bool Recording::input(istream& ist)
 				if (! this->domove(Move(x - 1, y - 1))) return false;
 				x = 0; y = 0;
 			}
-			if (0x61 <= c && c < 0x61 + this->board_size) { //lower case letter
+			if (isalpha(c)) { //is letter
 				// it's second mover's choice in 4th item, and in case of the second mover then choose to do two moves,
 				// the next move will be white, so it's still a swap choice for the first mover to choose black in 6th item.
-				if (this->count == 4 - 1 && c == 'b' && i + 4 <= str.length() - 1 && str[i + 1] == 'l') {
-					this->domove(Move(true)); i += 4; continue;
-				} else if (this->count == 6 - 1 && c == 'w' && i + 4 <= str.length() - 1 && str[i + 1] == 'h') {
-					this->domove(Move(false)); i += 4; continue;
+				if (this->count == 4 - 1 || this->count == 6 - 1) {
+					if (tolower(c) == 'b' && i + 4 <= str.length() - 1 && str[i + 1] == 'l') {
+						this->domove(Move(true)); i += 4; continue;
+					} else if (tolower(c) == 'w' && i + 4 <= str.length() - 1 && str[i + 1] == 'h') {
+						this->domove(Move(false)); i += 4; continue;
+					}
 				}
-				x = c - 0x61 + 1;
-			} else if (0x41 <= c && c < 0x41 + this->board_size) //upper case letter
-				x = c - 0x41 + 1;
-			else if (c == '-') //pass
+				if (islower(c)) x = c - (islower(c)? 0x61 : 0x41) + 1;
+			} else if (c == '-') //pass
 				if (! this->domove(Move(false))) return false;
 		}
 	}
@@ -286,7 +302,7 @@ void Recording::output(ostream& ost, bool show_round_num) const
 			cout << " ";
 
 		if (this->moves[i].position_null() && (i == 4 - 1 || i == 6 - 1))
-			ost << moves[i].swap? "black" : "white";
+			ost << (moves[i].swap? "black" : "white");
 		else
 			ost << (string) this->moves[i];
 		

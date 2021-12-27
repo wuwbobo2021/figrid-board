@@ -85,6 +85,7 @@ public:
 	bool operator!=(const Recording&) const;
 	
 	bool domove(Move mv);
+	bool append(const Recording* record);
 	bool undo(unsigned short steps = 1);
 	bool goback(unsigned short num);
 	void clear();
