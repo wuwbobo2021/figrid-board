@@ -1,5 +1,5 @@
 # Figrid
-Version 0.10 "Innocent Coincidence"
+Version 0.11 "Plymouth Straw"
 
 A recording software for the Five-in-a-Row game which can run on Linux shell and is compatible with Renlib.
 
@@ -11,13 +11,14 @@ If you have found bugs in this program, or you have any suggestion (especially s
 1. A text based user interface showing the game board, supporting undo, goback and rotation;
 2. Reading game records from input and from PGN files;
 3. Creating, opening and saving Renlib library file;
-4. Auto rotation for querying: you don't have to rotate the board manually, but the library will rotate it's recordings for you.
+4. Auto rotation for querying: you don't have to rotate the board manually, but the library will rotate it's recordings for you;
+5. A pipe interface for external programs which can be opened with parameter `-p`.
 
 ## Build
 ```
 git clone https://github.com/wuwbobo2021/figrid-board
 cd figrid-board
-g++ -o <executable path> recording.cpp tree.cpp rule.cpp rule_gomoku_original.cpp tui.cpp platform_specific.cpp figrid.cpp main.cpp
+g++ -o <executable path> recording.cpp tree.cpp rule.cpp rule_original.cpp tui.cpp figrid.cpp main.cpp
 ```
 If you have failed to build it on Windows MinGW, please report the problem.
 

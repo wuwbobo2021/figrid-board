@@ -1,9 +1,9 @@
-// Figrid v0.10
+// Figrid v0.11
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
-//     If you have found bugs in this program, or you have any suggestion (especially
+// If you have found bugs in this program, or you have any suggestion (especially
 // suggestions about adding comments), please pull an issue, or contact me. 
-// Released Under GPL 3.0 License.
+// Released Under GPL-3.0 License.
 
 #include <string>
 #include <fstream>
@@ -11,9 +11,7 @@
 #include "figrid.h"
 
 using namespace std;
-
-namespace Namespace_Figrid
-{
+using namespace Namespace_Figrid;
 
 Figrid::Figrid(unsigned char board_size, Rule* rule_checker): crec(board_size), ctree(board_size),
                                                               rule(rule_checker)
@@ -30,7 +28,7 @@ string Figrid::current_mode_str() const
 {
 	switch (this->mode) {
 		case Figrid_Mode_None: return "Recording Mode";
-		case Figrid_Mode_Library_Read:  return "Library Reading Mode (" + to_string(cntmatch) + ")";
+		case Figrid_Mode_Library_Read:  return "Library Reading Mode (" + to_string(this->match_count()) + ")";
 		case Figrid_Mode_Library_Write: return "Library Writing Mode";
 	}
 	return "??"; //it should be impossible
@@ -65,7 +63,7 @@ unsigned short Figrid::moves_count() const
 unsigned short Figrid::match_count() const
 {
 	if (this->mode == Figrid_Mode_None) return 0;
-	return this->cntmatch;
+	return this->ctree.current_depth();
 }
 
 void Figrid::input(istream& ist)
@@ -87,16 +85,12 @@ void Figrid::input(istream& ist)
 	}
 	
 	if (this->mode == Figrid_Mode_Library_Read) {
-		if (dcnt > 1 || this->ctree.current_depth() <= 5) {
-			if (this->ctree.query(& this->crec))
-				this->cntmatch = this->ctree.current_depth();
-		} else
-			if (this->ctree.query(this->crec.last_move()))
-				this->cntmatch++;
-	} else if (this->mode == Figrid_Mode_Library_Write) {
+		if (dcnt > 1 || this->ctree.current_depth() <= 5)
+			this->ctree.query(& this->crec);
+		else
+			this->ctree.query(this->crec.last_move());
+	} else if (this->mode == Figrid_Mode_Library_Write)
 		this->ctree.write_recording(& this->crec);
-		this->cntmatch = this->ctree.current_depth();
-	}
 }
 
 void Figrid::node_set_mark(bool val, bool mark_start)
@@ -161,37 +155,46 @@ void Figrid::output_current_node(ostream& ost, bool comment = true, bool multili
 			if (multiline)
 				ost << ((n == string::npos)? "  " : "\n") << com;
 			else
-				ost << '\t' << (n == string::npos)? com : com.substr(0, n);
+				ost << '\t' << ((n == string::npos)? com : com.substr(0, n));
 		}
 		ost << '\n';
 	} else
-		ost << "    ";
+		ost << '\t';
 }
 
-void Figrid::output_node_info(ostream& ost, bool descendents_comment)
+void Figrid::output_node_info(ostream& ost, bool comment)
 {
 	if (this->mode == Figrid_Mode_None) return;
-	if (this->cntmatch < this->crec.moves_count()) return;
+	if (this->match_count() < this->crec.moves_count()) return;
 	
-	ost << "Current Node: ";
-	this->output_current_node(ost, true, true);
+	ost << "Current: ";
+	this->output_current_node(ost, comment, true);
 	
 	unsigned short deg = this->ctree.current_degree();
 	if (deg > 0) {
 		this->ctree.pos_move_down();
 		for (unsigned short i = 0; i < deg; i++) {
-			this->output_current_node(ost, descendents_comment, false);			
+			this->output_current_node(ost, false);			
 			this->ctree.pos_move_right();
 		}
 		this->ctree.pos_move_up();
+		ost << '\n';
+		
+		if (comment) {
+			this->ctree.pos_move_down();
+			for (unsigned short i = 0; i < deg; i++) {
+				if (! this->ctree.current_ptr()->has_comment) continue;
+				this->output_current_node(ost, true, false);			
+				this->ctree.pos_move_right();
+			}
+			this->ctree.pos_move_up();
+		}
 	}
-	
-	if (! descendents_comment) ost << '\n';
 }
 
 void Figrid::board_print(ostream& ost)
 {
-	if (this->mode != Figrid_Mode_None && this->cntmatch >= this->crec.moves_count())
+	if (this->mode != Figrid_Mode_None && this->match_count() >= this->crec.moves_count())
 		this->ctree.print_current_board(ost);
 	else
 		this->crec.board_print(ost);
@@ -207,11 +210,9 @@ void Figrid::undo(unsigned short steps)
 		if (this->crec.moves_count() <= 5) { //check if rotation is still needed
 			this->ctree.pos_goto_root(); //and clears rotate tag
 			this->ctree.query(&crec);
-			this->cntmatch = this->ctree.current_depth();
-		} else if (this->crec.moves_count() < this->cntmatch) {
-			for (unsigned short i = 0; i < this->cntmatch - this->crec.moves_count(); i++)
+		} else if (this->crec.moves_count() < this->match_count()) {
+			for (unsigned short i = 0; i < this->match_count() - this->crec.moves_count(); i++)
 				this->ctree.pos_move_up();
-			this->cntmatch = this->ctree.current_depth();
 		}
 	}
 }
@@ -225,10 +226,9 @@ void Figrid::goback(unsigned short num)
 void Figrid::clear()
 {
 	this->crec.clear();
-	if (this->mode != Figrid_Mode_None) {
+	if (this->mode != Figrid_Mode_None)
 		this->ctree.pos_goto_root();
-		this->cntmatch = 0;
-	}
+	
 	this->rule->check_recording();
 }
 
@@ -251,7 +251,7 @@ void Figrid::rotate_into_tree()
 void Figrid::tree_goto_fork()
 {
 	if (this->mode == Figrid_Mode_None) return;
-	if (this->crec.moves_count() > this->cntmatch) return;
+	if (this->crec.moves_count() > this->match_count()) return;
 	
 	this->ctree.pos_goto_fork();
 	this->crec = ctree.get_current_recording();
@@ -260,7 +260,6 @@ void Figrid::tree_goto_fork()
 			this->ctree.pos_move_up();
 		this->rule->undo_invalid_moves();
 	}
-	cntmatch = this->ctree.current_depth();
 }
 
 void Figrid::tree_delete_node()
@@ -268,8 +267,6 @@ void Figrid::tree_delete_node()
 	if (this->mode == Figrid_Mode_None) return;
 	this->ctree.delete_current_pos();
 	this->crec.undo();
-	if (this->cntmatch > ctree.current_depth())
-		this->cntmatch = ctree.current_depth();
 }
 
 bool Figrid::load_pgn_file(string& file_path)
@@ -313,4 +310,3 @@ const Tree* Figrid::tree()
 	return & this->ctree;
 }
 
-}

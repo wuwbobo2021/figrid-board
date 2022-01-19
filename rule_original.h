@@ -5,23 +5,23 @@
 // suggestions about adding comments), please pull an issue, or contact me. 
 // Released Under GPL-3.0 License.
 
-#ifndef FIGRID_UI_H
-#define FIGRID_UI_H
+#ifndef FIGRID_RULE_ORIGINAL_H
+#define FIGRID_RULE_ORIGINAL_H
 
-#include "figrid.h"
+#include "rule.h"
 
 namespace Namespace_Figrid
 {
 
-class Figrid_UI
+class Rule_Gomoku_Original: Rule
 {
-protected:
-	Figrid* figrid;
-	Figrid_UI(Figrid* f): figrid(f) {}
+	bool check_row(unsigned char row_length, Position_State* prow); //return true if a connection of five rocks is found
+	
+public:
+	Rule_Gomoku_Original();
+	Rule_Gomoku_Original(Recording* rec);
 
-public:	
-	virtual int run() = 0;
-	virtual void refresh() = 0;
+	bool domove(Move mv);
 };
 
 }

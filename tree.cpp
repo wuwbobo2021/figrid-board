@@ -1,9 +1,9 @@
-// Figrid v0.10
+// Figrid v0.11
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
-//     If you have found bugs in this program, or you have any suggestion (especially
+// If you have found bugs in this program, or you have any suggestion (especially
 // suggestions about adding comments), please pull an issue, or contact me. 
-// Released Under GPL 3.0 License.
+// Released Under GPL-3.0 License.
 
 // Original Renlib code: <https://www.github.com/gomoku/Renlib>,
 // by Frank Arkbo, Sweden. but it might be harder to understand.
@@ -15,12 +15,10 @@
 #include <vector>
 #include <stack>
 
-#include "platform_specific.h"
 #include "tree.h"
 
 using namespace std;
 using namespace Namespace_Figrid;
-
 
 const int Renlib_Header_Size = 20;	
 //                                   0      1     2     3     4     5     6    7
@@ -46,7 +44,6 @@ struct Renlib_Node //it corresponds with every node in a Renlib file
 	bool has_sibling: 1; //left commas (: it has a right sibling. ("down" in original Renlib code)
 	//Reference: Data Structure Techniques by Thomas A. Standish, 3.5.2, Algorithm 3.4
 };
-
 
 Tree::Tree(unsigned short board_sz): board_size(board_sz), crec(board_sz) //the recording is initialized here
 {
@@ -425,12 +422,11 @@ void Tree::write_recording(const Recording* record)
 
 bool Tree::is_renlib_file(const string& file_path)
 {
-	if (file_size(file_path) < Renlib_Header_Size + 2) return false;
-	
-	char head[8];
+	char head[Renlib_Header_Size + 2];
 	ifstream ifs(file_path, ios_base::binary | ios_base::in);
 	if (! ifs.is_open()) return false;
-	ifs.read(head, 8);
+	ifs.read(head, Renlib_Header_Size + 2);
+	if (! ifs) return false;
 	
 	for (unsigned char i = 0; i < 8; i++)
 		if ((unsigned char) head[i] != Renlib_Header[i]) return false;
@@ -548,7 +544,8 @@ bool Tree::save_renlib(const string& file_path)
 		rename(file_path.c_str(), bak_path.c_str());
 	}
 	
-	ofstream ofs(file_path, ios_base::binary | ios_base::out);
+	ofstream ofs;
+	ofs.open(file_path, ios_base::binary | ios_base::out);
 	if (! ofs.is_open()) return false;
 	ofs.write((const char*)Renlib_Header, Renlib_Header_Size);
 	
@@ -572,6 +569,7 @@ bool Tree::save_renlib(const string& file_path)
 		rnode.is_leaf = (this->ppos->down == NULL);
 		
 		ofs.write((char*) &rnode, sizeof(rnode));
+		
 		if (this->ppos->has_comment) {
 			string str = this->comments[this->ppos->tag_comment];
 			string_manage_multiline(str, true); //replace '\n' with "\r\n"
