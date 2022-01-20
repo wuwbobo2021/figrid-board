@@ -23,7 +23,7 @@ g++ -o <executable path> recording.cpp tree.cpp rule.cpp rule_original.cpp tui.c
 If you have failed to build it on Windows MinGW, please report the problem.
 
 ## TODO
-This list is for those who are willing to improbe this program. I will not do these things in a long time.
+This list is for those who are willing to improve this program. I will not do these things in a long time.
 
 1. Communication with external engines (like AlphaGomoku: <https://github.com/MaciejKozarzewski/AlphaGomoku>).
 2. Implementation of Renju and Swap2 rule for this program;
