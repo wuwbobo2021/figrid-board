@@ -1,4 +1,4 @@
-// Figrid v0.11
+// Figrid v0.15
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
@@ -107,6 +107,9 @@ void Figrid_TUI::output_help()
 	
 	if (this->figrid->current_mode() != Figrid_Mode_None)
 		cout << "down, d\t\t\tGoto the next fork in the tree\n"
+		     << "search mark|start\tSearch marks under current node\n"
+		     << "search pos <pos>\tSearch nodes of position <pos> under current node\n"
+		     << "search <comment>\tSearch in comments of nodes under current node\n"
 		     << "rotate\t\t\tRotate current board to match with existing route in the library\n";
 	
 	cout << "rotate <d>\t\tRotate current board. <d> can be +(-) 90, 180, 270\n"
@@ -124,7 +127,7 @@ void Figrid_TUI::output_help()
 		     << "lock\t\t\tSwitch to library reading mode\n";
 	
 	if (this->figrid->current_mode() != Figrid_Mode_None)
-		cout << "save\t\t\tSave current tree as Renlib file\n"
+		cout << "save\t\t\tSave current tree as Renlib file and lock current tree\n"
 		     << "close\t\t\tDiscard current tree\n";
 	
 	cout << "exit, quit\t\tExit this program\n";
@@ -139,7 +142,9 @@ void Figrid_TUI::execute(string& strin)
 	string command = "", param = ""; int param_num = 0;
 	sstr >> command;
 	
-	if (command == "undo" || command == "u") {
+	if (command == "output") { //for pipe mode
+		this->figrid->output(cout, false); cout << '\n';
+	} else if (command == "undo" || command == "u") {
 		if (sstr >> param_num)
 			this->figrid->undo(param_num);
 		else
@@ -180,7 +185,7 @@ void Figrid_TUI::execute(string& strin)
 			this->figrid->rotate(rotation);
 		}
 	} else if (command == "reflect" || command == "flip") {
-		sstr >> param;  if (param.length() < 1) return;
+		sstr >> param;  if (param.length() == 0) return;
 		char ch = param[0];
 		if (ch == 'h')
 			this->figrid->rotate(Reflect_Horizontal);
@@ -188,6 +193,38 @@ void Figrid_TUI::execute(string& strin)
 			this->figrid->rotate(Reflect_Vertical);
 	} else if (command == "down" || command == "d") {
 		this->figrid->tree_goto_fork();	
+	} else if (command == "search") {
+		if (this->figrid->current_mode() == Figrid_Mode_None) return;
+		sstr >> param; if (param.length() == 0) return;
+		
+		Node_Search sch; vector<Recording> result;
+		sch.result = &result;
+		
+		if (param == "pos") {
+			sch.mode = Node_Search_Position;
+			Recording tmprec(this->figrid->recording()->board_size); tmprec.input(sstr);
+			if (tmprec.moves_count() == 0) return; //invalid move string
+			sch.pos = tmprec.last_move(); //it's the only move in `tmprec`
+		} else if (param == "mark")
+			sch.mode = Node_Search_Mark;
+		else if (param == "start")
+			sch.mode = Node_Search_Start;
+		else {
+			sch.mode = Node_Search_Comment;
+			param = cpstr; param.replace(0, command.length(), ""); string_skip_spaces(param);
+			sch.str = param;
+		}
+		this->figrid->search(&sch);
+		
+		if (this->tag_pipe || result.size() > 1) {
+			for (unsigned short i = 0; i < result.size(); i++) {
+				if (result[i].moves_count() == 0)
+					cout << "(Current)\n";
+				else
+					result[i].output(cout); cout << '\n';
+			}
+			if (!this->tag_pipe) terminal_pause();
+		}
 	} else if (command == "mark") {
 		sstr >> param;
 		this->figrid->node_set_mark(true, param == "start");
@@ -195,10 +232,15 @@ void Figrid_TUI::execute(string& strin)
 		sstr >> param;
 		this->figrid->node_set_mark(false, param == "start");
 	} else if (command == "comment") {
+		if (this->tag_pipe && this->figrid->current_mode() == Figrid_Mode_Library_Read) {
+			string comment; this->figrid->tree()->get_current_comment(comment);
+			if (comment.length() == 0) return;
+			cout << comment << '\n'; return;
+		}
+		
 		if (this->figrid->current_mode() != Figrid_Mode_Library_Write) return;
 		
-		string comment;
-		this->figrid->tree()->get_current_comment(comment);
+		string comment; this->figrid->tree()->get_current_comment(comment);
 		if (! this->tag_pipe) {
 			terminal_clear();
 			if (comment.length() > 0)
@@ -215,16 +257,21 @@ void Figrid_TUI::execute(string& strin)
 			if (new_lines_count >= 1) new_comment += '\n';
 			new_comment += (string) this->buf_getline;  new_lines_count++;
 		}
-		if (comment != "") {
-			if (comment.find("\n") || new_lines_count > 1) comment += '\n';
-			else comment += " ";
+		if (new_comment != "") {
+			if (comment.find("\n") != string::npos || (comment != "" && new_lines_count > 1))
+				comment += '\n';
+			else if (comment != "")
+				comment += " ";
+			comment += new_comment;
+			this->figrid->node_set_comment(comment);
 		}
-		comment += new_comment;
-		this->figrid->node_set_comment(comment);
 	} else if (command == "uncomment") {
 		string strempty = "";
 		this->figrid->node_set_comment(strempty);
 	} else if (command == "delete") {
+		if (this->figrid->current_mode() != Figrid_Mode_Library_Write) {
+			cout << "Invalid command. "; terminal_pause(); return;
+		}
 		this->figrid->tree_delete_node();
 	} else if (command == "save") {
 		if (this->figrid->current_mode() != Figrid_Mode_Library_Write) {
@@ -241,7 +288,7 @@ void Figrid_TUI::execute(string& strin)
 			this->figrid->set_mode(Figrid_Mode_Library_Read);
 	} else if (command == "close") {
 		this->figrid->set_mode(Figrid_Mode_None);
-	} else if (command == "help" || command == "h" || command == "?") {
+	} else if (command == "help" || command == "h" || command == "?") { //for user
 		terminal_clear();
 		this->output_help();
 		terminal_pause();
@@ -261,14 +308,23 @@ void Figrid_TUI::execute(string& strin)
 void Figrid_TUI::refresh()
 {
 	terminal_clear();
-	cout << "Figrid v0.11\t" << this->figrid->current_mode_str() << "\n";
+	cout << "Figrid v0.15\t" << this->figrid->current_mode_str() << "\n";
 	
 	#ifdef _WIN32
-		ostringstream sstr;
-		this->figrid->board_print(sstr);
-		string str_board = sstr.str();
-		string_transfer_to_ansi(str_board);
-		cout << str_board;
+		if (! tag_ascii) {
+			ostringstream sstr;
+			this->figrid->board_print(sstr);
+			string str_board = sstr.str();
+			string_transfer_to_ansi(str_board);
+			
+			if (str_board.find("?") != string::npos) //failed to transfer
+				tag_ascii = true;
+			else
+				cout << str_board;
+		}
+		if (tag_ascii) {
+			this->figrid->board_print(cout, true);
+		}
 	#else
 		this->figrid->board_print(cout);
 	#endif

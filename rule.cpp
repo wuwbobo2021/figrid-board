@@ -1,4 +1,4 @@
-// Figrid v0.11
+// Figrid v0.15
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially

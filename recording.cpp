@@ -1,4 +1,4 @@
-// Figrid v0.11
+// Figrid v0.15
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
@@ -14,9 +14,9 @@ using namespace Namespace_Figrid;
 
 const unsigned short Null_Pos_Count_Max = 32;
 
-Move::Move(): x(Board_Size_Max), y(Board_Size_Max), swap(false) {}
+Move::Move(): x(Board_Pos_Null), y(Board_Pos_Null), swap(false) {}
 Move::Move(unsigned char nx, unsigned char ny): x(nx), y(ny), swap(false) {}
-Move::Move(bool sw): x(Board_Size_Max), y(Board_Size_Max), swap(sw) {}
+Move::Move(bool sw): x(Board_Pos_Null), y(Board_Pos_Null), swap(sw) {}
 
 bool Move::operator==(const Move& p) const
 {
@@ -51,7 +51,7 @@ bool Move::position_valid(unsigned char board_size) const
 
 bool Move::position_null() const
 {
-	return this->x == Board_Size_Max && this->y == Board_Size_Max;
+	return this->x == Board_Pos_Null && this->y == Board_Pos_Null;
 }
 
 void Move::rotate(unsigned char board_size, Position_Rotation rotation, bool rotate_back)
@@ -242,13 +242,23 @@ const Move* Recording::recording_ptr() const
 bool Recording::input(istream& ist)
 {
 	unsigned int llmax = this->board_size * 13 + 10; 
-	string str = ""; char buf[llmax]; bool pgn = false;
+	string str = ""; char buf[llmax]; char cch;
 	while (ist && (! ist.eof())) {
 		ist.getline(buf, llmax);
-		if (strlen(buf) == 0) continue;
-		if (buf[0] == '[') {pgn = true; continue;} //TODO: improve the class `Recording` to load more info from PGN texts
+		if (strlen(buf) == 0) continue; //blank line
+		if (buf[0] == '[') continue; //TODO: improve the class `Recording` to load more info from PGN texts
+		break;
+	}
+	while (true) {
 		str += (string) buf; str += " ";
-		if (!pgn) break;
+		
+		if (!ist || ist.eof()) break;
+		ist >> cch;
+		if (cch == '[') {ist.putback(cch); break;} // that should be the beginning of the next PGN recording
+		ist.putback(cch);
+		
+		ist.getline(buf, llmax);
+		if (strlen(buf) == 0) break; //blank line
 	}
 	
 	unsigned char c; unsigned char x = 0, y = 0;
@@ -400,7 +410,7 @@ void Recording::board_rotate(Position_Rotation rotation, bool rotate_back)
 	this->refresh_positions();
 }
 
-void Recording::board_print(ostream &ost, unsigned short dots_count, Move* pdots) const
+void Recording::board_print(ostream &ost, unsigned short dots_count, Move* pdots, bool use_ascii) const
 {
 	for(char v = this->board_size - 1; v >= 0; v--) {
 		if (v + 1 < 10) ost << " ";
@@ -412,8 +422,10 @@ void Recording::board_print(ostream &ost, unsigned short dots_count, Move* pdots
 					if (dots_count != 0 && pdots != NULL) {
 						for (unsigned short d = 0; d < dots_count; d++)
 							if (pdots[d].x == h && pdots[d].y == v)
-								{is_dot = true; ost << "·"; break;}
+								{is_dot = true; ost << (use_ascii? "*" : "·"); break;}
 					} if (is_dot) break;
+					if (use_ascii) {ost << " ."; break;}
+					
 					if (v == 0 && h == 0)
 						ost << "└";
 					else if (v == 0 && h == this->board_size - 1)
@@ -434,12 +446,14 @@ void Recording::board_print(ostream &ost, unsigned short dots_count, Move* pdots
 						ost << "┼";
 					break;
 				case Position_Black:
+					if (use_ascii) {ost << " X"; break;}
 					if (this->moves[count - 1].x == h && this->moves[count - 1].y == v)
 					 	ost << "◆";
 					else
 					 	ost << "●";
 					break;
 				case Position_White:
+					if (use_ascii) {ost << " O"; break;}
 					if (this->moves[count - 1].x == h && this->moves[count - 1].y == v)
 						ost << "⊙";
 					else

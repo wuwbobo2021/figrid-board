@@ -1,4 +1,4 @@
-// Figrid v0.11
+// Figrid v0.15
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
@@ -17,7 +17,7 @@ class Figrid_TUI: Figrid_UI
 {
 	Figrid* figrid;
 	char buf_getline[2048]; //getline buffer
-	bool tag_pipe = false, tag_exit = false;
+	bool tag_pipe = false, tag_ascii = false, tag_exit = false;
 	
 	void string_skip_spaces(string& str); //remove spaces at the start of the string
 	void string_transfer_to_ansi(string& str);

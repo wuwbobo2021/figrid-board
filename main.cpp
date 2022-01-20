@@ -1,4 +1,4 @@
-// Figrid v0.11 "Plymouth Straw"
+// Figrid v0.15 "Plymouth Straw"
 // a recording software for the Five-in-a-Row game which can run on Linux shell
 // and is compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.

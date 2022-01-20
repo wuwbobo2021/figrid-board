@@ -1,4 +1,4 @@
-// Figrid v0.11
+// Figrid v0.15
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
@@ -115,9 +115,9 @@ Position_Rotation Figrid::query_rotate_tag() const
 }
 
 
-void Figrid::output(ostream& ost) const
+void Figrid::output(ostream& ost, bool show_round_num) const
 {
-	this->crec.output(ost, true);
+	this->crec.output(ost, show_round_num);
 }
 
 void Figrid::output_game_status(ostream& ost) const
@@ -169,6 +169,7 @@ void Figrid::output_node_info(ostream& ost, bool comment)
 	
 	ost << "Current: ";
 	this->output_current_node(ost, comment, true);
+	if (! comment) ost << '\n';
 	
 	unsigned short deg = this->ctree.current_degree();
 	if (deg > 0) {
@@ -192,14 +193,28 @@ void Figrid::output_node_info(ostream& ost, bool comment)
 	}
 }
 
-void Figrid::board_print(ostream& ost)
+void Figrid::board_print(ostream& ost, bool use_ascii)
 {
 	if (this->mode != Figrid_Mode_None && this->match_count() >= this->crec.moves_count())
-		this->ctree.print_current_board(ost);
+		this->ctree.print_current_board(ost, use_ascii);
 	else
-		this->crec.board_print(ost);
+		this->crec.board_print(ost, 0, NULL, use_ascii);
 }
-	
+
+void Figrid::search(Node_Search* sch)
+{
+	if (this->mode != Figrid_Mode_None) {
+		this->ctree.search(sch);
+		if (sch->result->size() == 1) { //only one search result
+			this->crec.append(&((* sch->result)[0]));
+			if (! this->rule->check_recording())
+				this->rule->undo_invalid_moves();
+			this->ctree.pos_goto_root(); //clear rotate tag
+			this->ctree.query(& this->crec);
+		}
+	}
+}
+
 void Figrid::undo(unsigned short steps)
 {
 	if (steps == 0) return;
@@ -208,7 +223,7 @@ void Figrid::undo(unsigned short steps)
 	
 	if (this->mode != Figrid_Mode_None) {
 		if (this->crec.moves_count() <= 5) { //check if rotation is still needed
-			this->ctree.pos_goto_root(); //and clears rotate tag
+			this->ctree.pos_goto_root(); //and clear rotate tag
 			this->ctree.query(&crec);
 		} else if (this->crec.moves_count() < this->match_count()) {
 			for (unsigned short i = 0; i < this->match_count() - this->crec.moves_count(); i++)
@@ -264,7 +279,7 @@ void Figrid::tree_goto_fork()
 
 void Figrid::tree_delete_node()
 {
-	if (this->mode == Figrid_Mode_None) return;
+	if (this->mode != Figrid_Mode_Library_Write) return;
 	this->ctree.delete_current_pos();
 	this->crec.undo();
 }

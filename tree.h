@@ -1,4 +1,4 @@
-// Figrid v0.11
+// Figrid v0.15
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
@@ -28,6 +28,23 @@ struct Node //the node structure in memory
 	Node* right = NULL; // right sibling
 };
 
+enum Node_Search_Mode
+{
+	Node_Search_None = 0, //don't search
+	Node_Search_Mark = 1,     //0001
+	Node_Search_Start = 2,    //0010
+	Node_Search_Position = 4, //0100
+	Node_Search_Comment = 8   //1000
+};
+
+struct Node_Search
+{
+	Node_Search_Mode mode;
+	Move pos;
+	string str;
+	vector<Recording>* result;
+};
+
 class Tree
 {
 	Node* proot; // root of the tree
@@ -39,7 +56,7 @@ class Tree
 	unsigned short cdepth = 0; //current depth
 	Recording crec; //current recording
 	
-	// 0: positions in the tree don't need rotation; 1: clockwise 90 deg...
+	// 0: the accepted query doesn't need rotation; 1: clockwise 90 deg...
 	// 3: clockwise 270 deg; 4: horizontal reflect; 5: horizontal reflect, then clockwise 90 deg...
 	Position_Rotation tag_rotate = Rotate_None;
 	
@@ -59,7 +76,7 @@ public:
 	unsigned short current_degree() const;
 	Move get_current_move(bool rotate_back = true) const; //`rotate_back`: back to the direction of the original query
 	Recording get_current_recording(bool rotate_back = true) const; //get a copy of current recording
-	void print_current_board(ostream& ost) const;
+	void print_current_board(ostream& ost, bool use_ascii = false) const;
 	
 	bool current_mark(bool mark_start = false) const;
 	void set_current_mark(bool val, bool mark_start = false);
@@ -79,10 +96,11 @@ public:
 	
 	Node* query(Move pos); //find in descendents of current node, goto the position if found, return NULL if not found
 	unsigned short query(const Recording* record); //check from root and goto the last existing move, and rotation is possible
-	void write_recording(const Recording* record); //load a recording
 	Position_Rotation query_rotate_tag() const;
 	void clear_rotate_tag();
-
+	void search(Node_Search* sch, bool rotate = true); //search in descendents of current node
+	void write_recording(const Recording* record); //load a recording
+	
 	static bool is_renlib_file(const string& file_path);
 	bool load_renlib(const string& file_path); //it will destruct the current tree, then load the library
 	bool save_renlib(const string& file_path);

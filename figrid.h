@@ -1,4 +1,4 @@
-// Figrid v0.11
+// Figrid v0.15
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
@@ -50,10 +50,12 @@ public:
 	void node_set_comment(string& comment);
 	
 	Position_Rotation query_rotate_tag() const; //indicates how the board is rotated to match an existing route in the tree
-	void output(ostream& ost) const;
+	void output(ostream& ost, bool show_round_num = true) const;
 	void output_game_status(ostream& ost) const;
 	void output_node_info(ostream& ost, bool comment = false); //`with_comment`: outputs one-line comments
-	void board_print(ostream& ost);
+	void board_print(ostream& ost, bool use_ascii = false);
+	
+	void search(Node_Search* sch);
 	
 	void undo(unsigned short steps = 1);
 	void goback(unsigned short num);

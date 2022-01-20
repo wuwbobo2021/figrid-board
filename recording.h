@@ -1,4 +1,4 @@
-// Figrid v0.11
+// Figrid v0.15
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
@@ -14,7 +14,8 @@ using namespace std;
 
 namespace Namespace_Figrid
 {
-const unsigned char Board_Size_Max = 0x1f; //2^5 - 1
+const unsigned char Board_Size_Max = 26;
+const unsigned char Board_Pos_Null = 0x1f; //2^5 - 1
 
 enum Position_State: unsigned char
 {
@@ -108,7 +109,7 @@ public:
 	unsigned char board_get_row(Board_Row_Direction direction, unsigned char index, Position_State* po) const;
 	unsigned char board_get_row(Board_Row_Direction direction, Move pos, Position_State* po) const;
 	void board_rotate(Position_Rotation rotation, bool rotate_back = false);
-	void board_print(ostream &ost, unsigned short dots_count = 0, Move* pdots = NULL) const;
+	void board_print(ostream &ost, unsigned short dots_count = 0, Move* pdots = NULL, bool use_ascii = false) const;
 };
 
 }

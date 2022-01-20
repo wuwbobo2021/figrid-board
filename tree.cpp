@@ -1,4 +1,4 @@
-// Figrid v0.11
+// Figrid v0.15
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
@@ -14,7 +14,6 @@
 #include <fstream>
 #include <vector>
 #include <stack>
-
 #include "tree.h"
 
 using namespace std;
@@ -109,7 +108,7 @@ Recording Tree::get_current_recording(bool rotate_back) const
 	return rec;
 }
 
-void Tree::print_current_board(ostream& ost) const
+void Tree::print_current_board(ostream& ost, bool use_ascii) const
 {
 	Recording rec = this->get_current_recording(true); //rotate back to meet original query
 	
@@ -121,9 +120,9 @@ void Tree::print_current_board(ostream& ost) const
 			dots[i].rotate(this->board_size, tag_rotate, true); //rotate back
 			p = p->right;
 		}
-		rec.board_print(ost, this->current_degree(), dots);
+		rec.board_print(ost, this->current_degree(), dots, use_ascii);
 	} else
-		rec.board_print(ost);
+		rec.board_print(ost, 0, NULL, use_ascii);
 }
 
 bool Tree::current_mark(bool mark_start) const
@@ -177,7 +176,7 @@ bool Tree::pos_move_down()
 	if (this->ppos->down == NULL) return false;
 	
 	this->ppos = this->ppos->down;
-	seq[++this->cdepth] = this->ppos;
+	this->seq[++this->cdepth] = this->ppos;
 	this->crec.domove(this->ppos->pos);
 	return true;
 }
@@ -197,6 +196,7 @@ bool Tree::pos_move_right()
 	if (this->ppos->right == NULL) return false;
 	
 	this->ppos = this->ppos->right;
+	this->seq[this->cdepth] = this->ppos;
 	this->crec.undo(); this->crec.domove(this->ppos->pos);
 	return true;
 }
@@ -205,7 +205,7 @@ bool Tree::pos_move_left()
 {
 	if (this->cdepth < 1) return false;
 	
-	Node* p = this->seq[this->cdepth - 1]->down; //goto the eldest brother of current node
+	Node* p = this->seq[this->cdepth - 1]->down; //goto the left sibling
 	while (p != NULL && p->right != this->ppos)
 		p = p->right;
 	
@@ -266,20 +266,16 @@ void Tree::delete_current_pos()
 		Node* pleft = NULL;
 		if (this->pos_move_left()) {pleft = this->ppos; this->pos_move_right();}
 		
-		if (pleft)
+		if (pleft != NULL)
 			pleft->right = this->ppos->right;
-		else {
-			if (this->ppos->right == NULL)
-				this->seq[cdepth - 1]->down = NULL;
-			else
-				this->seq[cdepth - 1]->down = this->ppos->right;
-		}
+		else
+			this->seq[cdepth - 1]->down = this->ppos->right;
 	}
 	
 	//delete all nodes in postorder sequence
 	Node* psubroot = this->ppos; Node* ptmp;
 	stack<Node*> node_stack;
-	while (1) {
+	while (true) {
 		if (this->ppos->down != NULL) {
 			node_stack.push(this->ppos);
 			this->ppos = this->ppos->down;
@@ -400,6 +396,70 @@ void Tree::clear_rotate_tag()
 	this->tag_rotate = Rotate_None;
 }
 
+void Tree::search(Node_Search* sch, bool rotate)
+{
+	if (this->ppos == NULL) return;
+	
+	Move spos = sch->pos; if (rotate) spos.rotate(this->board_size, this->tag_rotate);
+	
+	Node* psubroot = this->ppos;
+	stack<Node*> node_stack; Recording tmprec(this->board_size);
+	
+	while (true) {
+		bool suc = true;
+		if (sch->mode & Node_Search_Mark)
+			if (! this->ppos->marked) suc = false;
+		if (suc)
+			if (sch->mode & Node_Search_Start)
+				if (! this->ppos->marked_start) suc = false;
+		if (suc)
+			if (sch->mode & Node_Search_Position)
+				if (ppos->pos != spos) suc = false;
+		if (suc)
+			if (sch->mode & Node_Search_Comment) {
+				if (! this->ppos->has_comment)
+					suc = false;
+				else
+					if (this->comments[this->ppos->tag_comment].find(sch->str) == string::npos)
+						suc = false;
+			}
+		
+		if (suc) {
+			if (! rotate)
+				sch->result->push_back(tmprec);
+			else {
+				Recording tmprec2 = tmprec; tmprec2.board_rotate(this->tag_rotate, true); //rotate back
+				sch->result->push_back(tmprec2);
+			}
+		}
+		
+		if (this->ppos->down != NULL) {
+			if (this->ppos != psubroot && this->ppos->right != NULL)
+				node_stack.push(this->ppos);
+			this->ppos = this->ppos->down;
+			tmprec.domove(this->ppos->pos);
+		}
+		else if (this->ppos->right != NULL) {
+			this->ppos = this->ppos->right;
+			tmprec.undo(); tmprec.domove(this->ppos->pos);
+		}
+		else if (! node_stack.empty()) {			
+			//recover the recording (go back to node_stack.top())
+			Move lmov = node_stack.top()->pos;
+			const Move* prec = tmprec.recording_ptr();
+			for (unsigned short i = tmprec.moves_count() - 1; i >= 0; i--)
+				if (prec[i] == lmov)
+					{tmprec.goback(i); break;}
+			
+			this->ppos = node_stack.top()->right; node_stack.pop();
+			tmprec.domove(this->ppos->pos);
+		}
+		else break;
+	}
+	
+	this->ppos = psubroot; //recover original position
+}
+
 void Tree::write_recording(const Recording* record)
 {
 	if (record->moves_count() == 0) return;
@@ -484,27 +544,24 @@ bool Tree::load_renlib(const string& file_path)
 		if (pnextpos == NULL) return false; //Out of memory
 		
 		if (rnode.x != 0 || rnode.y != 0) {
-			//convert x and y into Fiffle_Board::Move format, in which (0, 0) represents a1.
+			//convert x and y into Namespace_Figrid::Move format, in which (0, 0) represents a1.
 			this->ppos->pos.x = rnode.x - 1;
 			this->ppos->pos.y = 15 - rnode.y - 1;
 		}
 		this->ppos->marked = rnode.mark;
 		this->ppos->marked_start = rnode.start;
 		
-		//Reference: Data Structure Techniques by Thomas A. Standish, 3.5.2, Algorithm 3.4
-		//The top of the stack will point to the parent node of the next node, which is its left descendent.
-		if (rnode.has_sibling)
-			node_stack.push(this->ppos);
-		
-		//If the leaf is not the rightmost under the depth 1 subtree, it will be popped out just after being pushed in;
-		//or else, it means that the parent will be popped out, and the next node will be the parent's right sibling.
-		if (rnode.is_leaf) {
-			if (! node_stack.empty()) {
-				node_stack.top()->right = pnextpos; node_stack.pop();
-			} else
-				break; //the program has gone through the entire tree
-		} else
+		if (! rnode.is_leaf) {
+			//the top of the stack will point to the parent node of the next node, which is its left descendent
+			if (rnode.has_sibling)
+				node_stack.push(this->ppos);
 			this->ppos->down = pnextpos;
+		} else if (rnode.has_sibling) {
+			this->ppos->right = pnextpos; //the next node will be its right sibling
+		} else if (! node_stack.empty()) { //the next node will be the parent's right sibling
+			node_stack.top()->right = pnextpos; node_stack.pop();
+		} else
+			break; //the program has gone through the entire tree
 		
 		if (rnode.comment || rnode.old_comment) {
 			this->ppos->has_comment = true;
@@ -555,8 +612,7 @@ bool Tree::save_renlib(const string& file_path)
 	stack<Node*> node_stack;  Renlib_Node rnode;
 	rnode.old_comment = rnode.no_move = rnode.extension = false; //reserved?
 	
-	bool tag_end = false;
-	while (! tag_end) {
+	while (true) {
 		if (! this->ppos->pos.position_null()) {
 			rnode.x = this->ppos->pos.x + 1;
 			rnode.y = 15 - (this->ppos->pos.y + 1);
@@ -573,20 +629,20 @@ bool Tree::save_renlib(const string& file_path)
 		if (this->ppos->has_comment) {
 			string str = this->comments[this->ppos->tag_comment];
 			string_manage_multiline(str, true); //replace '\n' with "\r\n"
-			ofs.write(str.c_str(), str.length() + 1); // + 1 to write '\0'
+			ofs.write(str.c_str(), str.length() + 1); // +1 to write '\0'
 		}
 		
 		//go through the nodes in preorder sequence
-		if (this->ppos->right != NULL)
-			node_stack.push(this->ppos);
-		
-		if (this->ppos->down == NULL) {
-			if (! node_stack.empty()) {
-				this->ppos = node_stack.top()->right; node_stack.pop();
-			} else
-				tag_end = true;
-		} else
+		if (this->ppos->down != NULL) {
+			if (this->ppos->right != NULL)
+				node_stack.push(this->ppos->right);
 			this->ppos = this->ppos->down;
+		} else if (this->ppos->right != NULL) {
+			this->ppos = this->ppos->right;
+		} else if (! node_stack.empty()) {
+			this->ppos = node_stack.top(); node_stack.pop();
+		} else
+			break;
 	}
 	
 	this->pos_goto_root();
