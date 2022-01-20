@@ -422,7 +422,7 @@ void Recording::board_print(ostream &ost, unsigned short dots_count, Move* pdots
 					if (dots_count != 0 && pdots != NULL) {
 						for (unsigned short d = 0; d < dots_count; d++)
 							if (pdots[d].x == h && pdots[d].y == v)
-								{is_dot = true; ost << (use_ascii? "*" : "·"); break;}
+								{is_dot = true; ost << (use_ascii? " *" : "·"); break;}
 					} if (is_dot) break;
 					if (use_ascii) {ost << " ."; break;}
 					
