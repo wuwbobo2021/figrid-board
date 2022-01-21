@@ -211,6 +211,7 @@ bool Tree::pos_move_left()
 	
 	if (p == NULL || p->right != this->ppos) return false;
 	this->ppos = p;
+	this->seq[this->cdepth] = this->ppos;
 	this->crec.undo(); this->crec.domove(this->ppos->pos);
 	return true;
 }
