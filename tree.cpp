@@ -5,10 +5,10 @@
 // suggestions about adding comments), please pull an issue, or contact me. 
 // Released Under GPL-3.0 License.
 
-// Original Renlib code: <https://www.github.com/gomoku/Renlib>,
-// by Frank Arkbo, Sweden. but it might be harder to understand.
+// Original Renlib code: <https://www.github.com/gomoku/Renlib>, by Frank Arkbo.
 
 #include <cstdint>
+#include <locale> //only for `tolower()`
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -49,6 +49,9 @@ Tree::Tree(unsigned short board_sz): board_size(board_sz), crec(board_sz) //the 
 	this->proot = new Node;
 	this->seq = new Node*[board_size * board_size];
 	this->pos_goto_root();
+	
+	for (unsigned char i = 0; i < 8; i++)
+		this->rotations.push_back(Recording(board_size)); //prepare for function `query()`
 }
 
 Tree::~Tree()
@@ -281,6 +284,11 @@ void Tree::delete_current_pos()
 			node_stack.push(this->ppos);
 			this->ppos = this->ppos->down;
 		} else {
+			if (this->ppos->has_comment) {
+				this->comments[this->ppos->tag_comment].clear();
+				this->comments[this->ppos->tag_comment].shrink_to_fit(); //release memory usage
+			}
+			
 			if (this->ppos == psubroot) {delete this->ppos;  break;}
 			
 			if (this->ppos->right != NULL) { //delete current node and goto right of it
@@ -300,6 +308,7 @@ void Tree::delete_current_pos()
 		this->ppos = this->seq[--this->cdepth];
 		this->crec.undo();
 	} else { //it may happen when the tree object is being destructed, or when a library file is to be opened
+		this->comments.clear();
 		this->proot = new Node;
 		this->pos_goto_root();
 	}
@@ -335,7 +344,7 @@ unsigned short Tree::fixed_query(const Recording* record) //private, doesn't inv
 	const Move* prec = record->recording_ptr();
 	Node* pq = this->query(prec[0]);
 	
-	if (pq != NULL) { //the first move in this partial recording is a descendent of current position in the tree
+	if (pq != NULL) { //the first move in this recording is a descendent of the root in the tree
 		unsigned short mcnt;
 		for (mcnt = 1; mcnt < record->moves_count(); mcnt++) {
 			//check next move
@@ -360,30 +369,30 @@ unsigned short Tree::query(const Recording* record) //it might set the rotate ta
 	if (record->moves_count() < 1) return 0;
 	if (this->proot->down == NULL) return 0; //the tree is empty
 	
-	vector<Recording> rec; unsigned short mcnt[8];
-	for (unsigned char i = 0; i < 8; i++) { //create 8 empty recordings
-		rec.push_back(Recording(this->board_size));  mcnt[i] = 0;
+	if (this->tag_rotate != Rotate_None) { //it's already rotated last time, don't do more useless things
+		Recording rec = *record;
+		rec.board_rotate(this->tag_rotate);
+		return this->fixed_query(&rec);
 	}
-	unsigned char r = this->tag_rotate;
-	while (r < 8) { //if tag_rotate != 0 originally, then only do this for once
-		rec[r] = *record;
-		rec[r].board_rotate((Position_Rotation) r);
-		mcnt[r] = this->fixed_query(& rec[r]);
-		if (mcnt[r] == rec[r].moves_count()) { //completely matched
+	
+	unsigned short mcnt[8] = {0};
+	for (unsigned char r = 0; r < 8; r++) {
+		this->rotations[r] = *record;
+		this->rotations[r].board_rotate((Position_Rotation) r);
+		mcnt[r] = this->fixed_query(& rotations[r]);
+		if (mcnt[r] == this->rotations[r].moves_count()) { //completely matched
 			this->tag_rotate = (Position_Rotation) r;
 			return mcnt[r];
 		}
-		if (this->tag_rotate != Rotate_None) return mcnt[r]; //it's already rotated last time, don't do more useless things
-		r++;
 	}
 	
 	unsigned char idx = 0;
-	for (r = 0; r < 8; r++)
+	for (unsigned char r = 0; r < 8; r++)
 		if (mcnt[r] > mcnt[idx]) idx = r;
 	
 	if (mcnt[idx] == 0) return 0;
 	this->tag_rotate = (Position_Rotation) idx;
-	return this->fixed_query(& rec[idx]);
+	return this->fixed_query(& this->rotations[idx]);
 }
 
 
@@ -397,11 +406,18 @@ void Tree::clear_rotate_tag()
 	this->tag_rotate = Rotate_None;
 }
 
+void Tree::string_to_lower_case(string& str)
+{
+	for (unsigned int i = 0; i < str.length(); i++)
+		str[i] = tolower(str[i]);
+}
+
 void Tree::search(Node_Search* sch, bool rotate)
 {
 	if (this->ppos == NULL) return;
 	
 	Move spos = sch->pos; if (rotate) spos.rotate(this->board_size, this->tag_rotate);
+	string sstr = sch->str; string_to_lower_case(sstr);
 	
 	Node* psubroot = this->ppos;
 	stack<Node*> node_stack; Recording tmprec(this->board_size);
@@ -420,9 +436,12 @@ void Tree::search(Node_Search* sch, bool rotate)
 			if (sch->mode & Node_Search_Comment) {
 				if (! this->ppos->has_comment)
 					suc = false;
-				else
-					if (this->comments[this->ppos->tag_comment].find(sch->str) == string::npos)
+				else {
+					string strlower = this->comments[this->ppos->tag_comment];
+					string_to_lower_case(strlower); //case insensitive
+					if (strlower.find(sstr) == string::npos)
 						suc = false;
+				}
 			}
 		
 		if (suc) {

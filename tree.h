@@ -30,7 +30,7 @@ struct Node //the node structure in memory
 
 enum Node_Search_Mode
 {
-	Node_Search_None = 0, //don't search
+	Node_Search_None = 0, //without requirement
 	Node_Search_Mark = 1,     //0001
 	Node_Search_Start = 2,    //0010
 	Node_Search_Position = 4, //0100
@@ -59,8 +59,10 @@ class Tree
 	// 0: the accepted query doesn't need rotation; 1: clockwise 90 deg...
 	// 3: clockwise 270 deg; 4: horizontal reflect; 5: horizontal reflect, then clockwise 90 deg...
 	Position_Rotation tag_rotate = Rotate_None;
+	vector<Recording> rotations; //temporarily used by function `query()` which perform rotations
 	
 	unsigned short fixed_query(const Recording* recording);
+	void string_to_lower_case(string& str);
 	void string_manage_multiline(string& str, bool back_to_crlf);
 
 public:
