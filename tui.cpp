@@ -220,8 +220,9 @@ void Figrid_TUI::execute(string& strin)
 			for (unsigned short i = 0; i < result.size(); i++) {
 				if (result[i].moves_count() == 0)
 					cout << "(Current)\n";
-				else
+				else {
 					result[i].output(cout); cout << '\n';
+				}
 			}
 			if (!this->tag_pipe) terminal_pause();
 		}
