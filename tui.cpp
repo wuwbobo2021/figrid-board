@@ -209,7 +209,7 @@ void Figrid_TUI::execute(string& strin)
 			sch.mode = Node_Search_Mark;
 		else if (param == "start")
 			sch.mode = Node_Search_Start;
-		else if (param.length() > 0){
+		else if (param.length() > 0) {
 			sch.mode = Node_Search_Comment;
 			param = cpstr; param.replace(0, command.length(), ""); string_skip_spaces(param);
 			sch.str = param;
