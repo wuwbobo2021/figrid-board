@@ -195,7 +195,7 @@ void Figrid_TUI::execute(string& strin)
 		this->figrid->tree_goto_fork();	
 	} else if (command == "search") {
 		if (this->figrid->current_mode() == Figrid_Mode_None) return;
-		sstr >> param; if (param.length() == 0) return;
+		sstr >> param;
 		
 		Node_Search sch; vector<Recording> result;
 		sch.result = &result;
@@ -209,7 +209,7 @@ void Figrid_TUI::execute(string& strin)
 			sch.mode = Node_Search_Mark;
 		else if (param == "start")
 			sch.mode = Node_Search_Start;
-		else {
+		else if (param.length() > 0){
 			sch.mode = Node_Search_Comment;
 			param = cpstr; param.replace(0, command.length(), ""); string_skip_spaces(param);
 			sch.str = param;
