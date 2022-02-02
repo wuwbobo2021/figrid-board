@@ -425,7 +425,7 @@ void Tree::search(Node_Search* sch, bool rotate)
 	while (true) {
 		bool suc = true;
 		if (sch->mode == Node_Search_None) {
-			if (this->ppos->down != NULL && this->ppos->down->right == NULL) suc = false; //current node has (only) one descendent
+			if (this->ppos->down != NULL) suc = false; //only search for leaves
 		} else {
 			if (sch->mode & Node_Search_Mark)
 				if (! this->ppos->marked) suc = false;
