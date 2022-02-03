@@ -39,7 +39,7 @@ enum Node_Search_Mode
 
 struct Node_Search
 {
-	Node_Search_Mode mode;
+	Node_Search_Mode mode = Node_Search_None;
 	Move pos;
 	string str;
 	vector<Recording>* result;
