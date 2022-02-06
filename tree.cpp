@@ -457,7 +457,7 @@ void Tree::search(Node_Search* sch, bool rotate)
 			}
 		}
 		
-		if (this->ppos->down != NULL) {
+		if (this->ppos->down != NULL && !((sch->mode & Node_Search_Position) && suc)) {
 			if (this->ppos != psubroot && this->ppos->right != NULL)
 				node_stack.push(this->ppos);
 			this->ppos = this->ppos->down;
