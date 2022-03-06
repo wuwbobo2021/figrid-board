@@ -26,10 +26,10 @@ class Figrid
 {
 	Figrid_Mode mode = Figrid_Mode_None;
 	
-	Rule* rule;
+	Rule* p_rule;
 	
-	Recording crec;
-	Tree ctree;
+	Recording rec;
+	Tree tree;
 	
 	void output_current_node(ostream& ost, bool comment, bool multiline) const; //private
 
@@ -65,13 +65,13 @@ public:
 	void tree_goto_fork();
 	void tree_delete_node();
 	
-	bool load_pgn_file(string& file_path);
-	bool load_renlib(string& file_path);
-	bool load_file(string& file_path); //implements simplest file format auto checking
-	bool save_renlib(string& file_path);
+	bool load_pgn_file(const string& file_path);
+	bool load_renlib(const string& file_path);
+	bool load_file(const string& file_path); //implements simplest file format auto checking
+	bool save_renlib(const string& file_path);
 	
-	const Recording* recording();
-	const Tree* tree();
+	const Recording* recording_ptr();
+	const Tree* tree_ptr();
 };
 
 

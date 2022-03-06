@@ -13,7 +13,7 @@
 namespace Namespace_Figrid
 {
 
-class Rule_Gomoku_Original: Rule
+class Rule_Gomoku_Original: public Rule
 {
 	bool check_row(unsigned char row_length, Position_State* prow); //return true if a connection of five rocks is found
 	
@@ -21,7 +21,7 @@ public:
 	Rule_Gomoku_Original();
 	Rule_Gomoku_Original(Recording* rec);
 
-	bool domove(Move mv);
+	bool domove(Move mv) override;
 };
 
 }

@@ -13,14 +13,10 @@
 namespace Namespace_Figrid
 {
 
-class Figrid_TUI: Figrid_UI
+class Figrid_TUI: public Figrid_UI
 {
-	Figrid* figrid;
-	char buf_getline[2048]; //getline buffer
+	char buf_getline[2048] = {0}; //getline buffer
 	bool tag_pipe = false, tag_ascii = false, tag_exit = false;
-	
-	void string_skip_spaces(string& str); //remove spaces at the start of the string
-	void string_transfer_to_ansi(string& str);
 	
 	void terminal_color_change(); //change to white background and black foreground
 	void terminal_color_change_back();
@@ -34,8 +30,8 @@ public:
 	Figrid_TUI(Figrid* f);
 	~Figrid_TUI();
 	void set_pipe_mode();
-	int run();
-	void refresh();
+	int run() override;
+	void refresh() override;
 };
 
 }

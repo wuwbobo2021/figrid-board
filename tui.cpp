@@ -15,7 +15,7 @@
 
 using namespace Namespace_Figrid;
 
-void Figrid_TUI::string_skip_spaces(string& str)
+void string_skip_spaces(string& str)
 {
 	if (str.length() == 0) return;
 	
@@ -26,7 +26,8 @@ void Figrid_TUI::string_skip_spaces(string& str)
 	str = str.substr(i, str.length() - i);
 }
 
-void Figrid_TUI::string_transfer_to_ansi(string& str) //this function is not written by myself
+#ifdef _WIN32
+void string_convert_to_ansi(string& str) //remove spaces at the beginning of the string
 {
 	//to wstring
 	wstring_convert<codecvt_utf8<wchar_t>> wconv;
@@ -37,6 +38,7 @@ void Figrid_TUI::string_transfer_to_ansi(string& str) //this function is not wri
 	use_facet<ctype<wchar_t>>(locale("")).narrow(wstr.data(), wstr.data() + wstr.size(), '?', buf.data());
 	str = string(buf.data(), buf.size());
 }
+#endif
 
 void Figrid_TUI::terminal_color_change()
 {
@@ -76,7 +78,7 @@ void Figrid_TUI::terminal_pause()
 #endif
 }
 
-Figrid_TUI::Figrid_TUI(Figrid* f): Figrid_UI(f), figrid(f)
+Figrid_TUI::Figrid_TUI(Figrid* f): Figrid_UI(f)
 {
 	cout.sync_with_stdio(false); //detach from C stdio
 }
@@ -158,7 +160,7 @@ void Figrid_TUI::execute(string& strin)
 		param = cpstr; param.replace(0, command.length(), ""); string_skip_spaces(param);
 		if (! this->tag_pipe) {
 			if (this->figrid->current_mode() == Figrid_Mode_Library_Write
-			 && this->figrid->tree()->is_renlib_file(param)) {
+			 && this->figrid->tree_ptr()->is_renlib_file(param)) {
 				cout << "Discard current data and exit? (y/n) ";
 				cin >> param; if (param != "y") return;
 			}
@@ -202,7 +204,7 @@ void Figrid_TUI::execute(string& strin)
 		
 		if (param == "pos") {
 			sch.mode = Node_Search_Position;
-			Recording tmprec(this->figrid->recording()->board_size); tmprec.input(sstr);
+			Recording tmprec(this->figrid->recording_ptr()->board_size); tmprec.input(sstr);
 			if (tmprec.moves_count() == 0) return; //invalid move string
 			sch.pos = tmprec.last_move(); //it's the only move in `tmprec`
 		} else if (param == "mark")
@@ -234,14 +236,14 @@ void Figrid_TUI::execute(string& strin)
 		this->figrid->node_set_mark(false, param == "start");
 	} else if (command == "comment") {
 		if (this->tag_pipe && this->figrid->current_mode() == Figrid_Mode_Library_Read) {
-			string comment; this->figrid->tree()->get_current_comment(comment);
+			string comment; this->figrid->tree_ptr()->get_current_comment(comment);
 			if (comment.length() == 0) return;
 			cout << comment << '\n'; return;
 		}
 		
 		if (this->figrid->current_mode() != Figrid_Mode_Library_Write) return;
 		
-		string comment; this->figrid->tree()->get_current_comment(comment);
+		string comment; this->figrid->tree_ptr()->get_current_comment(comment);
 		if (! this->tag_pipe) {
 			terminal_clear();
 			if (comment.length() > 0)
@@ -316,7 +318,7 @@ void Figrid_TUI::refresh()
 			ostringstream sstr;
 			this->figrid->board_print(sstr);
 			string str_board = sstr.str();
-			string_transfer_to_ansi(str_board);
+			string_convert_to_ansi(str_board);
 			
 			if (str_board.find("?") != string::npos) //failed to transfer
 				tag_ascii = true;

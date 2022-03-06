@@ -194,7 +194,7 @@ bool Recording::append(const Recording* record)
 
 bool Recording::undo(unsigned short steps)
 {
-	if (steps > this->count || steps < 0) return false;
+	if (steps > this->count) return false;
 	
 	for (short i = this->count - 1; i > this->count - 1 - steps; i--) {
 		if (! moves[i].position_null())
@@ -367,9 +367,10 @@ unsigned char Recording::board_get_row(Board_Row_Direction direction, unsigned c
 			else
 				pc = Move(index - this->board_size + 1, this->board_size);
 			
-			while (pc.x < this->board_size && pc.y >= 0) {
+			while (pc.x < this->board_size) {
 				*po = this->positions[pc.x][pc.y];
-				cnt++; pc.x++; pc.y--; po++;
+				cnt++; if (pc.y == 0) break;
+				pc.x++; pc.y--; po++;
 			}
 			return cnt;
 	}

@@ -44,11 +44,11 @@ struct Renlib_Node //it corresponds with every node in a Renlib file
 	//Reference: Data Structure Techniques by Thomas A. Standish, 3.5.2, Algorithm 3.4
 };
 
-Tree::Tree(unsigned short board_sz): board_size(board_sz), crec(board_sz) //the recording is initialized here
+Tree::Tree(unsigned short board_sz): board_size(board_sz), rec(board_sz) //the recording is initialized here
 {
-	this->proot = new Node;
+	this->root = new Node;
 	this->seq = new Node*[board_size * board_size];
-	this->pos_goto_root();
+	this->cur_goto_root();
 	
 	for (unsigned char i = 0; i < 8; i++)
 		this->rotations.push_back(Recording(board_size)); //prepare for function `query()`
@@ -56,7 +56,7 @@ Tree::Tree(unsigned short board_sz): board_size(board_sz), crec(board_sz) //the 
 
 Tree::~Tree()
 {
-	this->pos_goto_root();
+	this->cur_goto_root();
 	this->delete_current_pos();
 	
 	if (this->seq != NULL) {
@@ -65,14 +65,26 @@ Tree::~Tree()
 	}
 }
 
+Tree::Tree(const Tree&): board_size(15), rec(15)
+{
+	cerr << "Invalid Operation: Copying operation of Tree object is not implemented.\n";
+	throw exception();
+}
+
+Tree& Tree::operator=(const Tree&)
+{
+	cerr << "Invalid Operation: Operator= of Tree object is not implemented.\n";
+	throw exception();
+}
+
 const Node* Tree::root_ptr() const
 {
-	return this->proot;
+	return this->root;
 }
 
 const Node* Tree::current_ptr() const
 {
-	return this->ppos;
+	return this->cur;
 }
 
 unsigned short Tree::current_depth() const
@@ -82,9 +94,9 @@ unsigned short Tree::current_depth() const
 
 unsigned short Tree::current_degree() const
 {
-	if (this->ppos == NULL || this->ppos->down == NULL) return 0;
+	if (this->cur == NULL || this->cur->down == NULL) return 0;
 	
-	unsigned short cnt = 0; Node* p = this->ppos->down;
+	unsigned short cnt = 0; Node* p = this->cur->down;
 	while (p != NULL) {
 		cnt++;
 		p = p->right;
@@ -95,9 +107,9 @@ unsigned short Tree::current_degree() const
 Move Tree::get_current_move(bool rotate_back) const
 {
 	Move mv;
-	if (this->ppos == NULL) return mv; //return Null_Position_Move
+	if (this->cur == NULL) return mv; //return Null_Position_Move
 	
-	mv = this->ppos->pos;
+	mv = this->cur->pos;
 	if (rotate_back)
 		mv.rotate(this->board_size, this->tag_rotate, true); //rotate back
 	return mv;
@@ -105,7 +117,7 @@ Move Tree::get_current_move(bool rotate_back) const
 
 Recording Tree::get_current_recording(bool rotate_back) const
 {
-	Recording rec = this->crec;
+	Recording rec = this->rec;
 	if (rotate_back)
 		rec.board_rotate(this->tag_rotate, true);
 	return rec;
@@ -116,8 +128,8 @@ void Tree::print_current_board(ostream& ost, bool use_ascii) const
 	Recording rec = this->get_current_recording(true); //rotate back to meet original query
 	
 	Move dots[this->current_degree()];
-	if (this->ppos != NULL && this->ppos->down != NULL) {
-		Node* p = this->ppos->down;
+	if (this->cur != NULL && this->cur->down != NULL) {
+		Node* p = this->cur->down;
 		for (unsigned short i = 0; i < this->current_degree(); i++) {
 			dots[i] = p->pos;
 			dots[i].rotate(this->board_size, tag_rotate, true); //rotate back
@@ -130,112 +142,112 @@ void Tree::print_current_board(ostream& ost, bool use_ascii) const
 
 bool Tree::current_mark(bool mark_start) const
 {
-	if (this->ppos == NULL) return false;
+	if (this->cur == NULL) return false;
 	
 	if (mark_start)
-		return this->ppos->marked_start;
+		return this->cur->marked_start;
 	else
-		return this->ppos->marked; 
+		return this->cur->marked; 
 }
 
 void Tree::set_current_mark(bool val, bool mark_start)
 {
-	if (this->ppos == NULL) return;
+	if (this->cur == NULL) return;
 	
 	if (mark_start)
-		this->ppos->marked_start = val;
+		this->cur->marked_start = val;
 	else
-		this->ppos->marked = val;
+		this->cur->marked = val;
 }
 
 bool Tree::get_current_comment(string& comment) const
 {
-	if (this->ppos == NULL) return false;
-	if (! this->ppos->has_comment) return false;
+	if (this->cur == NULL) return false;
+	if (! this->cur->has_comment) return false;
 	
-	comment = this->comments[this->ppos->tag_comment];
+	comment = this->comments[this->cur->tag_comment];
 	return true;
 }
 
 void Tree::set_current_comment(string& comment)
 {
-	if (this->ppos == NULL) return;
+	if (this->cur == NULL) return;
 	
 	if (comment != "") {
-		if (this->ppos->has_comment)
-			this->comments[this->ppos->tag_comment] = comment;
+		if (this->cur->has_comment)
+			this->comments[this->cur->tag_comment] = comment;
 		else {
 			this->comments.push_back(comment);
-			this->ppos->has_comment = true;
-			this->ppos->tag_comment = this->comments.size() - 1;
+			this->cur->has_comment = true;
+			this->cur->tag_comment = this->comments.size() - 1;
 		}
 	} else
-		this->ppos->has_comment = false;
+		this->cur->has_comment = false;
 }
 	
-bool Tree::pos_move_down()
+bool Tree::cur_move_down()
 {
-	if (this->ppos == NULL) return false;
-	if (this->ppos->down == NULL) return false;
+	if (this->cur == NULL) return false;
+	if (this->cur->down == NULL) return false;
 	
-	this->ppos = this->ppos->down;
-	this->seq[++this->cdepth] = this->ppos;
-	this->crec.domove(this->ppos->pos);
+	this->cur = this->cur->down;
+	this->seq[++this->cdepth] = this->cur;
+	this->rec.domove(this->cur->pos);
 	return true;
 }
 
-bool Tree::pos_move_up()
+bool Tree::cur_move_up()
 {
 	if (this->cdepth < 1) return false;
 	
-	this->ppos = this->seq[--this->cdepth];
-	this->crec.undo();
+	this->cur = this->seq[--this->cdepth];
+	this->rec.undo();
 	return true;
 }
 
-bool Tree::pos_move_right()
+bool Tree::cur_move_right()
 {
-	if (this->ppos == NULL) return false;
-	if (this->ppos->right == NULL) return false;
+	if (this->cur == NULL) return false;
+	if (this->cur->right == NULL) return false;
 	
-	this->ppos = this->ppos->right;
-	this->seq[this->cdepth] = this->ppos;
-	this->crec.undo(); this->crec.domove(this->ppos->pos);
+	this->cur = this->cur->right;
+	this->seq[this->cdepth] = this->cur;
+	this->rec.undo(); this->rec.domove(this->cur->pos);
 	return true;
 }
 
-bool Tree::pos_move_left()
+bool Tree::cur_move_left()
 {
 	if (this->cdepth < 1) return false;
 	
 	Node* p = this->seq[this->cdepth - 1]->down; //goto the left sibling
-	while (p != NULL && p->right != this->ppos)
+	while (p != NULL && p->right != this->cur)
 		p = p->right;
 	
-	if (p == NULL || p->right != this->ppos) return false;
-	this->ppos = p;
-	this->seq[this->cdepth] = this->ppos;
-	this->crec.undo(); this->crec.domove(this->ppos->pos);
+	if (p == NULL || p->right != this->cur) return false;
+	this->cur = p;
+	this->seq[this->cdepth] = this->cur;
+	this->rec.undo(); this->rec.domove(this->cur->pos);
 	return true;
 }
 
-void Tree::pos_goto_root()
+void Tree::cur_goto_root()
 {
-	this->ppos = this->proot;
-	this->seq[this->cdepth = 0] = this->proot;
-	this->crec.clear();
+	this->cur = this->root;
+	this->seq[this->cdepth = 0] = this->root;
+	this->rec.clear();
 	this->tag_rotate = Rotate_None;
 }
 
-bool Tree::pos_goto_fork()
+bool Tree::cur_goto_fork()
 {
-	if (this->ppos == NULL) return false;
+	if (this->cur == NULL) return false;
 	
-	while (this->ppos->down != NULL) {
-		if (this->ppos->down->right != NULL) return true;
-		this->ppos = this->ppos->down;
-		this->seq[++this->cdepth] = this->ppos;
-		this->crec.domove(this->ppos->pos);
+	while (this->cur->down != NULL) {
+		if (this->cur->down->right != NULL) return true;
+		this->cur = this->cur->down;
+		this->seq[++this->cdepth] = this->cur;
+		this->rec.domove(this->cur->pos);
 	};
 	
 	return false;
@@ -243,12 +255,12 @@ bool Tree::pos_goto_fork()
 
 Node* Tree::new_descendent()
 {
-	if (this->ppos == NULL) return NULL;
+	if (this->cur == NULL) return NULL;
 	
-	if (this->ppos->down == NULL)
-		return (this->ppos->down = new Node);
+	if (this->cur->down == NULL)
+		return (this->cur->down = new Node);
 	else {
-		Node* p = this->ppos->down;
+		Node* p = this->cur->down;
 		while (p->right != NULL)
 			p = p->right;
 		return p->right = new Node;
@@ -264,67 +276,67 @@ Node* Tree::new_descendent(Move pos)
 
 void Tree::delete_current_pos()
 {
-	if (this->ppos == NULL) return;
-	bool del_root = (this->ppos == this->proot);
+	if (this->cur == NULL) return;
+	bool del_root = (this->cur == this->root);
 	if (! del_root) {
 		Node* pleft = NULL;
-		if (this->pos_move_left()) {pleft = this->ppos; this->pos_move_right();}
+		if (this->cur_move_left()) {pleft = this->cur; this->cur_move_right();}
 		
 		if (pleft != NULL)
-			pleft->right = this->ppos->right;
+			pleft->right = this->cur->right;
 		else
-			this->seq[cdepth - 1]->down = this->ppos->right;
+			this->seq[cdepth - 1]->down = this->cur->right;
 	}
 	
 	//delete all nodes in postorder sequence
-	Node* psubroot = this->ppos; Node* ptmp;
+	Node* psubroot = this->cur; Node* pcur = psubroot; Node* ptmp;
 	stack<Node*> node_stack;
 	while (true) {
-		if (this->ppos->down != NULL) {
-			node_stack.push(this->ppos);
-			this->ppos = this->ppos->down;
+		if (pcur->down != NULL) {
+			node_stack.push(pcur);
+			pcur = pcur->down;
 		} else {
-			if (this->ppos->has_comment) {
-				this->comments[this->ppos->tag_comment].clear();
-				this->comments[this->ppos->tag_comment].shrink_to_fit(); //release memory usage
+			if (pcur->has_comment) {
+				this->comments[pcur->tag_comment].clear();
+				this->comments[pcur->tag_comment].shrink_to_fit(); //release memory usage
 			}
 			
-			if (this->ppos == psubroot) {delete this->ppos;  break;}
+			if (pcur == psubroot) {delete pcur;  break;}
 			
-			if (this->ppos->right != NULL) { //delete current node and goto right of it
-				ptmp = this->ppos->right;
-				delete this->ppos;
-				this->ppos = ptmp;
+			if (pcur->right != NULL) { //delete current node and goto right of it
+				ptmp = pcur->right;
+				delete pcur;
+				pcur = ptmp;
 			} else { //delete current node and go up
-				delete this->ppos;
+				delete pcur;
 				if (node_stack.empty()) break;
-				this->ppos = node_stack.top(); node_stack.pop();
-				this->ppos->down = NULL; //mark
+				pcur = node_stack.top(); node_stack.pop();
+				pcur->down = NULL; //mark
 			}
 		}
 	}
 	
 	if (! del_root) {
-		this->ppos = this->seq[--this->cdepth];
-		this->crec.undo();
+		this->cur = this->seq[--this->cdepth];
+		this->rec.undo();
 	} else { //it may happen when the tree object is being destructed, or when a library file is to be opened
 		this->comments.clear();
-		this->proot = new Node;
-		this->pos_goto_root();
+		this->root = new Node;
+		this->cur_goto_root();
 	}
 }
 
 Node* Tree::query(Move pos)
 {
-	if (this->ppos == NULL) return NULL;
-	if (this->ppos->down == NULL) return NULL;
+	if (this->cur == NULL) return NULL;
+	if (this->cur->down == NULL) return NULL;
 	
-	Node* p = this->ppos->down;
+	Node* p = this->cur->down;
 	while (p != NULL) {
 		if (p->pos == pos) {
-			this->ppos = p;
+			this->cur = p;
 			this->seq[++this->cdepth] = p;
-			this->crec.domove(pos);
+			this->rec.domove(pos);
 			return p;
 		} else
 			p = p->right;
@@ -336,10 +348,10 @@ Node* Tree::query(Move pos)
 unsigned short Tree::fixed_query(const Recording* record) //private, doesn't involve rotation
 {
 	if (record->moves_count() < 1) return 0;
-	if (this->proot->down == NULL) return 0; //the tree is empty
+	if (this->root->down == NULL) return 0; //the tree is empty
 	
 	Position_Rotation tag_back = this->tag_rotate;
-	this->pos_goto_root(); this->tag_rotate = tag_back;
+	this->cur_goto_root(); this->tag_rotate = tag_back;
 	
 	const Move* prec = record->recording_ptr();
 	Node* pq = this->query(prec[0]);
@@ -348,16 +360,16 @@ unsigned short Tree::fixed_query(const Recording* record) //private, doesn't inv
 		unsigned short mcnt;
 		for (mcnt = 1; mcnt < record->moves_count(); mcnt++) {
 			//check next move
-			if (this->ppos->down == NULL) return mcnt;
-			this->pos_move_down();
+			if (this->cur->down == NULL) return mcnt;
+			this->cur_move_down();
 			bool found = false;
 			do {
-				if (prec[mcnt] == this->ppos->pos) //prec[mcnt] is the move after <mcnt>th move
+				if (prec[mcnt] == this->cur->pos) //prec[mcnt] is the move after <mcnt>th move
 					{found = true; break;}
-			} while (this->pos_move_right());
+			} while (this->cur_move_right());
 			
 			if (!found)
-				{this->pos_move_up(); return mcnt;}
+				{this->cur_move_up(); return mcnt;}
 		} //mcnt++
 		return mcnt;
 	} else
@@ -367,7 +379,7 @@ unsigned short Tree::fixed_query(const Recording* record) //private, doesn't inv
 unsigned short Tree::query(const Recording* record) //it might set the rotate tag
 {
 	if (record->moves_count() < 1) return 0;
-	if (this->proot->down == NULL) return 0; //the tree is empty
+	if (this->root->down == NULL) return 0; //the tree is empty
 	
 	if (this->tag_rotate != Rotate_None) { //it's already rotated last time, don't do more useless things
 		Recording rec = *record;
@@ -406,41 +418,41 @@ void Tree::clear_rotate_tag()
 	this->tag_rotate = Rotate_None;
 }
 
-void Tree::string_to_lower_case(string& str)
+void string_to_lower_case(string& str)
 {
 	for (unsigned int i = 0; i < str.length(); i++)
 		str[i] = tolower(str[i]);
 }
 
-void Tree::search(Node_Search* sch, bool rotate)
+void Tree::search(Node_Search* sch, bool rotate) const
 {
-	if (this->ppos == NULL) return;
+	if (this->cur == NULL) return;
 	
 	Move spos = sch->pos; if (rotate) spos.rotate(this->board_size, this->tag_rotate);
 	string sstr = sch->str; string_to_lower_case(sstr);
 	
-	Node* psubroot = this->ppos;
+	Node* psubroot = this->cur; Node* pcur = psubroot;
 	stack<Node*> node_stack; Recording tmprec(this->board_size);
 	
 	while (true) {
 		bool suc = true;
 		if (sch->mode == Node_Search_None) {
-			if (this->ppos->down != NULL) suc = false; //only search for leaves
+			if (pcur->down != NULL) suc = false; //only search for leaves
 		} else {
 			if (sch->mode & Node_Search_Mark)
-				if (! this->ppos->marked) suc = false;
+				if (! pcur->marked) suc = false;
 			if (suc)
 				if (sch->mode & Node_Search_Start)
-					if (! this->ppos->marked_start) suc = false;
+					if (! pcur->marked_start) suc = false;
 			if (suc)
 				if (sch->mode & Node_Search_Position)
-					if (ppos->pos != spos) suc = false;
+					if (pcur->pos != spos) suc = false;
 			if (suc)
 				if (sch->mode & Node_Search_Comment) {
-					if (! this->ppos->has_comment)
+					if (! pcur->has_comment)
 						suc = false;
 					else {
-						string strlower = this->comments[this->ppos->tag_comment];
+						string strlower = this->comments[pcur->tag_comment];
 						string_to_lower_case(strlower); //case insensitive
 						if (strlower.find(sstr) == string::npos)
 							suc = false;
@@ -457,31 +469,30 @@ void Tree::search(Node_Search* sch, bool rotate)
 			}
 		}
 		
-		if (this->ppos->down != NULL && !((sch->mode & Node_Search_Position) && suc)) {
-			if (this->ppos != psubroot && this->ppos->right != NULL)
-				node_stack.push(this->ppos);
-			this->ppos = this->ppos->down;
-			tmprec.domove(this->ppos->pos);
+		if (pcur->down != NULL && !(suc && (sch->mode & Node_Search_Position))) {
+			if (pcur != psubroot && pcur->right != NULL)
+				node_stack.push(pcur);
+			pcur = pcur->down;
+			tmprec.domove(pcur->pos);
 		}
-		else if (this->ppos->right != NULL) {
-			this->ppos = this->ppos->right;
-			tmprec.undo(); tmprec.domove(this->ppos->pos);
+		else if (pcur->right != NULL) {
+			pcur = pcur->right;
+			tmprec.undo(); tmprec.domove(pcur->pos);
 		}
-		else if (! node_stack.empty()) {			
+		else if (! node_stack.empty()) {
 			//recover the recording (go back to node_stack.top())
 			Move lmov = node_stack.top()->pos;
 			const Move* prec = tmprec.recording_ptr();
-			for (unsigned short i = tmprec.moves_count() - 1; i >= 0; i--)
+			for (int i = tmprec.moves_count() - 1; i >= 0; i--) {
 				if (prec[i] == lmov)
 					{tmprec.goback(i); break;}
+			}
 			
-			this->ppos = node_stack.top()->right; node_stack.pop();
-			tmprec.domove(this->ppos->pos);
+			pcur = node_stack.top()->right; node_stack.pop();
+			tmprec.domove(pcur->pos);
 		}
 		else break;
 	}
-	
-	this->ppos = psubroot; //recover original position
 }
 
 void Tree::write_recording(const Recording* record)
@@ -489,18 +500,18 @@ void Tree::write_recording(const Recording* record)
 	if (record->moves_count() == 0) return;
 	
 	Recording rec = *record;
-	this->pos_goto_root(); //involves clearing rotate tag (for rerotation check)
+	this->cur_goto_root(); //involves clearing rotate tag (for rerotation check)
 	unsigned short excnt = this->query(&rec); //count of existing moves (begins from root)
 	if (excnt == rec.moves_count()) return; //nothing to write
 	rec.board_rotate(this->tag_rotate);
 	
 	const Move* prec = rec.recording_ptr();
 	for (unsigned short i = excnt; i < rec.moves_count(); i++) {
-		if (! this->crec.domove(prec[i])) {rec.goback(i); this->crec = rec; return;}
+		if (! this->rec.domove(prec[i])) {rec.goback(i); this->rec = rec; return;}
 		
-		this->ppos = this->new_descendent(prec[i]);
-		if (this->ppos == NULL) return; //Out of memory
-		this->seq[++this->cdepth] = this->ppos;
+		this->cur = this->new_descendent(prec[i]);
+		if (this->cur == NULL) return; //Out of memory
+		this->seq[++this->cdepth] = this->cur;
 	}
 }
 
@@ -518,7 +529,7 @@ bool Tree::is_renlib_file(const string& file_path)
 	return true;
 }
 
-void Tree::string_manage_multiline(string& str, bool back_to_crlf = false) //private
+void string_manage_multiline(string& str, bool back_to_crlf = false) //private
 {
 	//0x08 "\b" is the multiline comment tag at the end of first comment line in Renlib
 	size_t pos = str.find(back_to_crlf? "\n" : "\b"); 
@@ -548,47 +559,48 @@ bool Tree::load_renlib(const string& file_path)
 	ifs.ignore(Renlib_Header_Size);
 	
 	//make sure the loader begins with an empty tree
-	this->pos_goto_root();
+	this->cur_goto_root();
 	this->delete_current_pos();
-	this->ppos = this->proot = new Node;
+	this->cur = this->root = new Node;
 	
 	//read the nodes in preorder to reconstruct the tree
-	Renlib_Node rnode; stack<Node*> node_stack; Node* pnextpos; bool root = true;
+	Renlib_Node rnode; stack<Node*> node_stack; bool root = true;
+	Node* pcur = this->root; Node* pnext = NULL;
 	while (ifs && (! ifs.eof())) {
 		ifs.read((char*) &rnode, 2); //read a node
 		
 		if (root && (rnode.x != 0 || rnode.y != 0)) {
 			//make sure the root of the reconstructed tree has a null position
-			this->new_descendent();
-			this->pos_move_down();
+			this->root->down = new Node;
+			pcur = this->root->down;
 		}
 		root = false;
 		
-		pnextpos = new Node; //in which the `pos` is initialized as a null position
-		if (pnextpos == NULL) return false; //Out of memory
+		pnext = new Node; //in which the `pos` is initialized as a null position
+		if (pnext == NULL) return false; //Out of memory
 		
 		if (rnode.x != 0 || rnode.y != 0) {
 			//convert x and y into Namespace_Figrid::Move format, in which (0, 0) represents a1.
-			this->ppos->pos.x = rnode.x - 1;
-			this->ppos->pos.y = 15 - rnode.y - 1;
+			pcur->pos.x = rnode.x - 1;
+			pcur->pos.y = 15 - rnode.y - 1;
 		}
-		this->ppos->marked = rnode.mark;
-		this->ppos->marked_start = rnode.start;
+		pcur->marked = rnode.mark;
+		pcur->marked_start = rnode.start;
 		
 		if (! rnode.is_leaf) {
 			//the top of the stack will point to the parent node of the next node, which is its left descendent
 			if (rnode.has_sibling)
-				node_stack.push(this->ppos);
-			this->ppos->down = pnextpos;
+				node_stack.push(pcur);
+			pcur->down = pnext;
 		} else if (rnode.has_sibling) {
-			this->ppos->right = pnextpos; //the next node will be its right sibling
+			pcur->right = pnext; //the next node will be its right sibling
 		} else if (! node_stack.empty()) { //the next node will be the parent's right sibling
-			node_stack.top()->right = pnextpos; node_stack.pop();
+			node_stack.top()->right = pnext; node_stack.pop();
 		} else
 			break; //the program has gone through the entire tree
 		
 		if (rnode.comment || rnode.old_comment) {
-			this->ppos->has_comment = true;
+			pcur->has_comment = true;
 			string str = ""; char ch;
 			while (ifs && (! ifs.eof())) {
 				ifs.read(&ch, 1);  if (ch == '\0') break;
@@ -596,7 +608,7 @@ bool Tree::load_renlib(const string& file_path)
 			}
 			string_manage_multiline(str); //replace "\r\n" with '\n'
 			this->comments.push_back(str); //to C++ string
-			this->ppos->tag_comment = this->comments.size() - 1;
+			pcur->tag_comment = this->comments.size() - 1;
 			
 			//goto the byte right of the last '\0'
 			while (ifs && (! ifs.eof())) {
@@ -605,16 +617,16 @@ bool Tree::load_renlib(const string& file_path)
 			}
 		}
 				
-		this->ppos = pnextpos; //this will not happen if current node is the last node, see the 'break;' above
+		pcur = pnext; //this will not happen if current node is the last node, see the 'break;' above
 	}
 	
-	bool comp = (this->ppos != pnextpos); //this should be true if the file is not broken
-	if (comp) delete pnextpos;
-	this->pos_goto_root();
+	bool comp = (pcur != pnext); //this should be true if the file is not broken
+	if (comp) delete pnext;
+	this->cur_goto_root();
 	return comp;
 }
 
-bool Tree::save_renlib(const string& file_path)
+bool Tree::save_renlib(const string& file_path) const
 {
 	if (this->board_size != 15) throw Invalid_Board_Size_Exception();
 	
@@ -630,46 +642,42 @@ bool Tree::save_renlib(const string& file_path)
 	if (! ofs.is_open()) return false;
 	ofs.write((const char*)Renlib_Header, Renlib_Header_Size);
 	
-	Recording rec_back = this->crec;
-	
-	this->ppos = this->proot;
+	Node* pcur = this->root;
 	stack<Node*> node_stack;  Renlib_Node rnode;
 	rnode.old_comment = rnode.no_move = rnode.extension = false; //reserved?
 	
 	while (true) {
-		if (! this->ppos->pos.position_null()) {
-			rnode.x = this->ppos->pos.x + 1;
-			rnode.y = 15 - (this->ppos->pos.y + 1);
+		if (! pcur->pos.position_null()) {
+			rnode.x = pcur->pos.x + 1;
+			rnode.y = 15 - (pcur->pos.y + 1);
 		} else rnode.x = rnode.y = 0;
 		
-		rnode.comment = this->ppos->has_comment;
-		rnode.mark = this->ppos->marked;
-		rnode.start = this->ppos->marked_start;
-		rnode.has_sibling = (this->ppos->right != NULL);
-		rnode.is_leaf = (this->ppos->down == NULL);
+		rnode.comment = pcur->has_comment;
+		rnode.mark = pcur->marked;
+		rnode.start = pcur->marked_start;
+		rnode.has_sibling = (pcur->right != NULL);
+		rnode.is_leaf = (pcur->down == NULL);
 		
 		ofs.write((char*) &rnode, sizeof(rnode));
 		
-		if (this->ppos->has_comment) {
-			string str = this->comments[this->ppos->tag_comment];
+		if (pcur->has_comment) {
+			string str = this->comments[pcur->tag_comment];
 			string_manage_multiline(str, true); //replace '\n' with "\r\n"
 			ofs.write(str.c_str(), str.length() + 1); // +1 to write '\0'
 		}
 		
 		//go through the nodes in preorder sequence
-		if (this->ppos->down != NULL) {
-			if (this->ppos->right != NULL)
-				node_stack.push(this->ppos->right);
-			this->ppos = this->ppos->down;
-		} else if (this->ppos->right != NULL) {
-			this->ppos = this->ppos->right;
+		if (pcur->down != NULL) {
+			if (pcur->right != NULL)
+				node_stack.push(pcur->right);
+			pcur = pcur->down;
+		} else if (pcur->right != NULL) {
+			pcur = pcur->right;
 		} else if (! node_stack.empty()) {
-			this->ppos = node_stack.top(); node_stack.pop();
+			pcur = node_stack.top(); node_stack.pop();
 		} else
 			break;
 	}
 	
-	this->pos_goto_root();
-	this->query(&rec_back); //recover
 	return true;
 }

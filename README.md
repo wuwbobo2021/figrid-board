@@ -1,5 +1,5 @@
 # Figrid
-Version 0.15 "Plymouth Straw"
+Version 0.15
 
 A recording software for the Five-in-a-Row game which can run on Linux shell and is compatible with Renlib.
 
@@ -18,7 +18,7 @@ If you have found bugs in this program, or you have any suggestion (especially s
 ```
 git clone https://github.com/wuwbobo2021/figrid-board
 cd figrid-board
-g++ -o <executable path> recording.cpp tree.cpp rule.cpp rule_original.cpp tui.cpp figrid.cpp main.cpp
+g++ -o <executable path> -O3 recording.cpp tree.cpp rule.cpp rule_original.cpp tui.cpp figrid.cpp main.cpp
 ```
 If you have failed to build it on Windows MinGW, please report the problem.
 
@@ -27,6 +27,6 @@ This list is for those who are willing to improve this program. I will not do th
 
 1. Communication with external engines (like AlphaGomoku: <https://github.com/MaciejKozarzewski/AlphaGomoku>).
 2. Implementation of Renju and Swap2 rule for this program;
-3. Support of RenjuNet Database; and implementation of a new library format for this program to support various board sizes.
+3. Support of RenjuNet Database;
 4. Make a graphical user interfafce for this program.
 

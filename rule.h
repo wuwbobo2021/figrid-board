@@ -29,9 +29,9 @@ class Rule
 {
 protected:
 	Recording* crec;
-	Game_Status cstatus;
-	unsigned short invalid_count;
-
+	Game_Status cstatus = (Game_Status) 0;
+	unsigned short invalid_count = 0;
+	
 	Rule();
 	Rule(Recording* rec);
 
