@@ -63,14 +63,12 @@ class Tree
 	
 	unsigned short fixed_query(const Recording* recording);
 
-	//invalid operations (merely throw an execption)
-	Tree(const Tree&);
-	Tree& operator=(const Tree&);
-
 public:
 	const unsigned short board_size;
 	
 	Tree(unsigned short board_sz);
+	Tree(const Tree&) = delete;
+	Tree& operator=(const Tree&) = delete;
 	~Tree();
 	
 	const Node* root_ptr() const;

@@ -65,18 +65,6 @@ Tree::~Tree()
 	}
 }
 
-Tree::Tree(const Tree&): board_size(15), rec(15)
-{
-	cerr << "Invalid Operation: Copying operation of Tree object is not implemented.\n";
-	throw exception();
-}
-
-Tree& Tree::operator=(const Tree&)
-{
-	cerr << "Invalid Operation: Operator= of Tree object is not implemented.\n";
-	throw exception();
-}
-
 const Node* Tree::root_ptr() const
 {
 	return this->root;
