@@ -318,7 +318,7 @@ void Figrid_TUI::execute(string& strin)
 void Figrid_TUI::refresh()
 {
 	terminal_clear();
-	cout << "Figrid v0.15\t" << this->figrid->current_mode_str() << endl;
+	cout << "Figrid v0.15\t" << this->figrid->current_mode_str() << '\n';
 	
 	#ifdef _WIN32
 		if (! tag_ascii) {
@@ -339,11 +339,11 @@ void Figrid_TUI::refresh()
 		this->figrid->board_print(cout);
 	#endif
 	
-	this->figrid->output(cout); cout << endl;
+	this->figrid->output(cout); cout << '\n';
 	if (this->figrid->current_mode() != Figrid_Mode_None)
 		this->figrid->output_node_info(cout, true);
 	figrid->output_game_status(cout);
-	cout << "> ";
+	cout << "> " << flush;
 }
 
 int Figrid_TUI::run()
@@ -361,8 +361,10 @@ int Figrid_TUI::run()
 		if (this->tag_exit) break;
 		if (! this->tag_pipe)
 			this->refresh();
-		else
+		else {
 			this->figrid->output_node_info(cout, false);
+			cout << flush;
+		}
 	}
 	
 	return 0;
