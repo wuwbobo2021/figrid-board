@@ -15,7 +15,7 @@
 
 using namespace Namespace_Figrid;
 
-void string_skip_spaces(string& str)
+void string_skip_spaces(string& str) //remove spaces at the beginning of the string
 {
 	if (str.length() == 0) return;
 	
@@ -27,7 +27,7 @@ void string_skip_spaces(string& str)
 }
 
 #ifdef _WIN32
-void string_convert_to_ansi(string& str) //remove spaces at the beginning of the string
+void string_convert_to_ansi(string& str)
 {
 	//to wstring
 	wstring_convert<codecvt_utf8<wchar_t>> wconv;
