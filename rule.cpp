@@ -1,16 +1,14 @@
-// Figrid v0.15
+// Figrid v0.20
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
-// suggestions about adding comments), please pull an issue, or contact me. 
+// suggestions about adding comments), please create an issue, or contact me. 
 // Released Under GPL-3.0 License.
 
 #include "rule.h"
 
 using namespace std;
-using namespace Namespace_Figrid;
-
-Rule::Rule() {}
+using namespace Figrid;
 
 Rule::Rule(Recording* rec): crec(rec) {}
 
@@ -33,27 +31,27 @@ unsigned short Rule::invalid_moves_count() const
 bool Rule::check_recording()
 {
 	if (this->crec == NULL) return false;
-	if (this->crec->moves_count() == 0) {
+	if (this->crec->count() == 0) {
 		this->cstatus = (Game_Status) (Game_Status_First_Mover | Game_Status_Black);
 		return true;
 	}
 	this->cstatus = (Game_Status) 0;
 	
 	unsigned short cnt; //count of moves checked
-	Recording rec = * this->crec; const Move* p = rec.recording_ptr(); //copy current recording
+	Recording rec = * this->crec; //copy current recording
 	this->crec->clear();
-	for (cnt = 0; cnt < rec.moves_count(); cnt++) {
+	for (cnt = 0; cnt < rec.count(); cnt++) {
 		if (this->cstatus & Game_Status_Ended) {
-			this->invalid_count = rec.moves_count() - cnt;
+			this->invalid_count = rec.count() - cnt;
 			this->cstatus = Game_Status_Foul;
 			* this->crec = rec; //recover the bad recording
 			return false;
 		}
 		
-		this->domove(p[cnt]);
+		this->domove(rec[cnt]);
 	}
 	
-	if (rec.moves_count() == rec.moves_count_max)
+	if (rec.board_is_filled())
 		this->cstatus = Game_Status_Ended;
 	
 	return true;

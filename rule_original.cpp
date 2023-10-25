@@ -1,21 +1,20 @@
-// Figrid v0.15
+// Figrid v0.20
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
-// suggestions about adding comments), please pull an issue, or contact me. 
+// suggestions about adding comments), please create an issue, or contact me. 
 // Released Under GPL-3.0 License.
 
 #include "rule_original.h"
 
-using namespace Namespace_Figrid;
+using namespace Figrid;
 
-Rule_Gomoku_Original::Rule_Gomoku_Original(): Rule() {}
-Rule_Gomoku_Original::Rule_Gomoku_Original(Recording* rec): Rule(rec)
+RuleOriginal::RuleOriginal(Recording* rec): Rule(rec)
 {
 	this->check_recording();
 }
 
-bool Rule_Gomoku_Original::check_row(unsigned char row_length, Position_State* prow)
+bool RuleOriginal::check_row(unsigned char row_length, Position_State* prow)
 {
 	unsigned char cb = 0, cw = 0;
 	for (unsigned char i = 0; i < row_length; i++) {
@@ -40,7 +39,7 @@ bool Rule_Gomoku_Original::check_row(unsigned char row_length, Position_State* p
 	return false;
 }
 
-bool Rule_Gomoku_Original::domove(Move mv)
+bool RuleOriginal::domove(Move mv)
 {
 	if (this->crec == NULL) return false;
 	if (this->cstatus & Game_Status_Ended) return false;

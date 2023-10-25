@@ -1,271 +1,367 @@
-// Figrid v0.15
+// Figrid v0.20
 // a recording software for the Five-in-a-Row game compatible with Renlib.
 // By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.
 // If you have found bugs in this program, or you have any suggestion (especially
-// suggestions about adding comments), please pull an issue, or contact me. 
+// suggestions about adding comments), please create an issue, or contact me. 
 // Released Under GPL-3.0 License.
 
 #include <string>
 #include <sstream>
-#include <locale>
-#include <codecvt>
+#include <cctype>
 
+#include "recording.h"
 #include "ui.h"
 #include "tui.h"
 
-using namespace Namespace_Figrid;
+using namespace Figrid;
 
-void string_skip_spaces(string& str) //remove spaces at the beginning of the string
+static inline void skip_spaces(string& str) //remove spaces at the beginning of the string
 {
 	if (str.length() == 0) return;
 	
 	unsigned int i;
 	for (i = 0; i < str.length(); i++)
-		if (str[i] != ' ' && str[i] != '\t') break;
+		if (! isblank(str[i])) break;
 	
-	str = str.substr(i, str.length() - i);
+	if (i < str.length())
+		str = str.substr(i, str.length() - i);
+	else
+		str = "";
 }
 
-#ifdef _WIN32
-void string_convert_to_ansi(string& str)
+static inline bool parse_word(string& str, const string& word) //remove word if found
 {
-	//to wstring
-	wstring_convert<codecvt_utf8<wchar_t>> wconv;
-	wstring wstr = wconv.from_bytes(str.c_str()); //transfer chars to wchars according to UTF-8 encoding
+	skip_spaces(str);
 	
-	//to ANSI (local page) string
-	vector<char> buf(wstr.size());
-	try {
-		use_facet<ctype<wchar_t>>(locale("")).narrow(wstr.data(), wstr.data() + wstr.size(), '?', buf.data());
-	} catch (std::runtime_error ex) {
-		str = "?"; return;
-	}
-	str = string(buf.data(), buf.size());
+	unsigned int word_len = word.length();
+	if (!word_len || str.length() < word_len)
+		return false;
+	if (str.substr(0, word_len) != word)
+		return false;
+	if (str.length() == word_len)
+		{str = ""; return true;}
+	if (! isblank(str[word_len]))
+		return false;
+	
+	str.replace(0, word_len, ""); skip_spaces(str);
+	return true;
 }
-#endif
 
-void Figrid_TUI::terminal_color_change()
+static inline bool parse_num(string& str, int* p_num)
+{
+	istringstream iss(str); int num;
+	if (iss >> num) {
+		*p_num = num;
+		stringbuf buf; //store the remaining
+		iss >> &buf; str = buf.str();
+		return true;
+	} else
+		return false;
+}
+
+bool ask_yes_no(const string& str_question)
+{
+	cout << str_question << " (y/n) " << flush;
+	string str_ans; cin >> str_ans;
+	return (str_ans.length() == 1 && tolower(str_ans[0]) == 'y');
+}
+
+static inline void terminal_color_change()
 {
 #ifdef _WIN32
-	system("color f0");
+	int ret = system("color f0");
 #else
-	cout << "\033[30;47m"; //white background and black foreground
+	cout << "\033[30;107m"; //white background and black foreground
+	int ret = system("clear");
 #endif
 }
 
-void Figrid_TUI::terminal_color_change_back()
+static inline void terminal_color_change_back()
 {
 #ifdef _WIN32
-	system("color");
+	int ret = system("color");
 #else
-	cout << "\033[0m";
+	cout << "\033[0m" << flush;
 #endif
 }
 
-void Figrid_TUI::terminal_clear()
+static inline void terminal_clear()
 {
 #ifdef _WIN32
-	system("cls");
+	int ret = system("cls");
 #else
-	system("clear");
+	cout << "\033[2J\033[3J\033[1;1H"; //"\033[H\033[J"; //<< flush;
 #endif
 }
 
-void Figrid_TUI::terminal_pause()
+void FigridTUI::terminal_pause()
 {
 #ifdef _WIN32
-	cout << flush; system("pause");
+	cout << flush; int ret = system("pause");
 #else
 	cout << "Press Enter to continue..." << flush;
-	//system("read"); //useless
-	cin.getline(this->buf_getline, sizeof(this->buf_getline));
+	string str_tmp;
+	this->get_line(str_tmp); //system("read") doesn't work
 #endif
 }
 
-Figrid_TUI::Figrid_TUI(Figrid* f): Figrid_UI(f)
+FigridTUI::FigridTUI(Session* s): FigridUI(s)
 {
 	cout.sync_with_stdio(false); //detach from C stdio
 }
 
-Figrid_TUI::~Figrid_TUI()
+void FigridTUI::set_pipe_mode()
 {
-	terminal_color_change_back();
+	this->flag_pipe = true;
 }
 
-void Figrid_TUI::set_pipe_mode()
+void FigridTUI::set_xo_board_mode()
 {
-	if (this->tag_pipe) return;
-	tag_pipe = true;
-	cout.sync_with_stdio(true);
+	this->flag_xo_board = true;
 }
 
+bool FigridTUI::get_line(string& str)
+{
+	if (cin.getline(this->buf_getline, sizeof(this->buf_getline))) {
+		str = string(buf_getline); return true;
+	} else {
+		str = ""; return false;
+	}
+}
 
-void Figrid_TUI::output_help()
+void FigridTUI::output_help()
 {
 	cout << "A recording software for the Five-in-a-Row game compatible with Renlib.\n"
 	     << "By wuwbobo2021 <https://www.github.com/wuwbobo2021>, <wuwbobo@outlook.com>.\n"
 	     << "(Original Renlib: <http://www.renju.se/renlib>, by Frank Arkbo)\n"
-	     << "If you have any suggestion or you have found bug(s), please contact me.\n"
-	     << "Note: Choose proper font, and ambigious width characters should be fullwidth.\n\n";
+	     << "If you have any suggestion or you have found bug(s), please contact me.\n";
+	if (! this->flag_xo_board)
+		cout << "Note: Choose proper font, and ambiguous width characters should be fullwidth.\n"
+		     << "      If there is no such option in the terminal, execute this program with -x.\n";
+	cout << '\n';
 	
 	cout << "undo, u [count]\t\tUndo move(s) in current recording\n"
-	     << "goback <num>\t\tGo back to <num>th move\n"
+	     << "next, n\t\t\tGoto the next move in the tree/recording\n"
+	     << "down, d\t\t\tGoto the next fork in the tree/recording\n"
+	     << "goto <num>|<pos>\tGoto <num>th or <pos> move in the recording\n"
 	     << "clear, root, r\t\tClear current recording\n";
 	
-	if (this->figrid->current_mode() != Figrid_Mode_None)
-		cout << "down, d\t\t\tGoto the next fork in the tree\n"
-		     << "search mark|start\tSearch marks under current node\n"
+	if (this->session->has_library())
+		cout << "search mark|start\tSearch marks under current node\n"
 		     << "search pos <pos>\tSearch nodes of position <pos> under current node\n"
 		     << "search <comment>\tSearch in comments of nodes under current node\n"
 		     << "rotate\t\t\tRotate current board to match with existing route\n";
 	
-	cout << "rotate <d>\t\tRotate current board. <d> can be +(-) 90, 180, 270\n"
-	     << "reflect, flip <d>\tReflect current board. <d> can be 'h' or 'v'\n";
+	if (this->session->current_mode() == Session_Mode_Library_Write)
+		cout << "rotate merge\t\tMerge rotations in the library to the entered recording\n";
+
+	cout << "rotate <d>\t\tRotate current board. <d>: [+|-] 90|180|270|1|2|3\n"
+	     << "reflect, flip <d>\tReflect current board. <d>: h|v|ld|rd\n";
 	
-	cout << "open\t\t\tOpen PGN or Renlib file\n";
-	if (this->figrid->current_mode() != Figrid_Mode_Library_Write)
+	cout << "open [list] <path>\tOpen PGN, Renlib or list text file\n";
+	if (this->session->current_mode() != Session_Mode_Library_Write)
 		cout << "write\t\t\tSwitch to library writing mode\n";
 	else
 		cout << "mark [start]\t\tMark current node\n"
 		     << "unmark [start]\t\tUnmark current node\n"
 		     << "comment\t\t\tSet comment for current node\n"
-		     << "uncomment\t\tUncomment current node\n"
+		     << "uncomment\t\tDelete comment of current node\n"
+		     << "move l|r <pos>\t\tAdjust the sequence of child nodes by moving one of them\n"
 		     << "delete\t\t\tDelete current node and go back to parent node\n"
+		     << "standardize\t\tHelp standardize the library by auto-merging of rotations\n"
 		     << "lock\t\t\tSwitch to library reading mode\n";
 	
-	if (this->figrid->current_mode() != Figrid_Mode_None)
-		cout << "save\t\t\tSave current tree as Renlib file and lock current tree\n"
-		     << "close\t\t\tDiscard current tree\n";
-	
+	if (this->session->has_library())
+		cout << "save [list]\t\tSave current tree as Renlib or list text file\n"
+		     << "close\t\t\tDiscard current tree and switch to recording mode\n";
+	else
+		cout << "save\t\t\tSave current recording ending with current move\n";
+
 	cout << "exit, quit\t\tExit this program\n";
 	
 	cout << flush;
 }
 
-void Figrid_TUI::execute(string& strin)
+bool FigridTUI::check_has_library()
 {
-	if (strin.length() == 0) return;
+	bool suc = this->session->has_library();
+	if (!suc && !this->flag_pipe) {
+		cout << "This command is invalid under recording mode. "; terminal_pause();
+	}
+	return suc;
+}
+
+bool FigridTUI::check_library_write_mode()
+{
+	bool suc = (this->session->current_mode() == Session_Mode_Library_Write);
+	if (!suc && !this->flag_pipe) {
+		cout << "This command is valid under write mode. "; terminal_pause();
+	}
+	return suc;
+}
+
+void FigridTUI::execute(string& strin)
+{
+	if (strin.length() > 0)
+		this->str_prev_cmd = "";
+	else {
+		if (this->flag_pipe) return;
+		if (this->str_prev_cmd.length() == 0) return;
+		strin = this->str_prev_cmd;
+	}
+
+	string cmd = strin; int param_num = 0;
 	
-	string cpstr = strin;
-	stringstream sstr(cpstr);
-	string command = "", param = ""; int param_num = 0;
-	sstr >> command;
-	
-	if (command == "output") { //for pipe mode
-		this->figrid->output(cout, false); cout << endl;
-	} else if (command == "undo" || command == "u") {
-		if (sstr >> param_num)
-			this->figrid->undo(param_num);
-		else
-			this->figrid->undo();
-	} else if (command == "goback") {
-		if (sstr >> param_num)
-			this->figrid->goback(param_num);
-	} else if (command == "clear" || command == "root" || command == "r") {
-		this->figrid->clear();
-	} else if (command == "open") {
-		param = cpstr; param.replace(0, command.length(), ""); string_skip_spaces(param);
-		if (! this->tag_pipe) {
-			if (this->figrid->current_mode() == Figrid_Mode_Library_Write
-			 && this->figrid->tree_ptr()->is_renlib_file(param)) {
-				cout << "Discard current data and exit? (y/n) " << flush;
-				cin >> param; if (param != "y") return;
-			}
+	if (parse_word(cmd, "output")) { //for pipe mode
+		this->session->output(cout, false); cout << endl;
+	}
+	else if (parse_word(cmd, "undo") || parse_word(cmd, "u")) {
+		if (parse_num(cmd, &param_num)) {
+			if (param_num > 0) this->session->undo(param_num);
+		} else
+			this->session->undo();
+		this->str_prev_cmd = strin;
+	}
+	else if (parse_word(cmd, "next") || parse_word(cmd, "n")) {
+		this->session->goto_next();
+		this->str_prev_cmd = strin;
+	}
+	else if (parse_word(cmd, "goto")) {
+		if (parse_num(cmd, &param_num)) {
+			if (param_num >= 0) this->session->goto_num(param_num);
+		} else
+			this->session->goto_move(read_single_move(cmd));
+	}
+	else if (parse_word(cmd, "down") || parse_word(cmd, "d")) {
+		this->session->go_straight_down();	
+	}
+	else if (parse_word(cmd, "clear") || parse_word(cmd, "root") || parse_word(cmd, "r")) {
+		this->session->clear();
+	}
+	else if (parse_word(cmd, "open")) {
+		bool is_node_list = parse_word(cmd, "list");
+		if (cmd.length() == 0) return;
+		if (this->flag_pipe == false
+		&&  this->session->current_mode() == Session_Mode_Library_Write
+		&&  this->session->tree_ptr()->is_renlib_file(cmd)) {
+			if (! ask_yes_no("Discard current data?")) return;
 		}
-		if (! this->figrid->load_file(param)) {
+		if (! this->session->load_file(cmd, is_node_list)) {
 			cout << "Failed to load file. "; terminal_pause();
 		}
-	} else if (command == "write") {
-		this->figrid->set_mode(Figrid_Mode_Library_Write);
-	} else if (command == "lock") {
-		if (this->figrid->current_mode() == Figrid_Mode_Library_Write)
-			this->figrid->set_mode(Figrid_Mode_Library_Read);
-	} else if (command == "rotate") {
-		sstr >> param_num;
-		if (param_num == 0)
-			this->figrid->rotate_into_tree();
-		else {
+	}
+	else if (parse_word(cmd, "write")) {
+		this->session->set_mode(Session_Mode_Library_Write);
+	}
+	else if (parse_word(cmd, "lock")) {
+		if (this->session->current_mode() == Session_Mode_Library_Write)
+			this->session->set_mode(Session_Mode_Library_Read);
+	}
+	else if (parse_word(cmd, "rotate")) {
+		if (parse_num(cmd, &param_num)) {
 			Position_Rotation rotation;
 			switch (param_num) {
-				case 90: case -270: rotation = Rotate_Clockwise; break;
-				case 180: case -180: rotation = Rotate_Central_Symmetric; break;
-				case -90: case 270: rotation = Rotate_Counterclockwise; break;
+				case  90: case -270: case  1: case -3:
+					rotation = Rotate_Clockwise; break;
+				case 180: case -180: case  2: case -2:
+					rotation = Rotate_Central_Symmetric; break;
+				case -90: case  270: case -1: case  3:
+					rotation = Rotate_Counterclockwise; break;
+				default: return;
 			}
-			this->figrid->rotate(rotation);
+			this->session->rotate(rotation);
+			this->str_prev_cmd = strin;
 		}
-	} else if (command == "reflect" || command == "flip") {
-		sstr >> param;  if (param.length() == 0) return;
-		char ch = param[0];
-		if (ch == 'h')
-			this->figrid->rotate(Reflect_Horizontal);
-		else if (ch == 'v')
-			this->figrid->rotate(Reflect_Vertical);
-	} else if (command == "down" || command == "d") {
-		this->figrid->tree_goto_fork();	
-	} else if (command == "search") {
-		if (this->figrid->current_mode() == Figrid_Mode_None) return;
-		sstr >> param;
-		
-		Node_Search sch; vector<Recording> result;
-		sch.result = &result;
-		
-		if (param == "pos") {
-			sch.mode = Node_Search_Position;
-			Recording tmprec(this->figrid->recording_ptr()->board_size); tmprec.input(sstr);
-			if (tmprec.moves_count() == 0) return; //invalid move string
-			sch.pos = tmprec.last_move(); //it's the only move in `tmprec`
-		} else if (param == "mark")
-			sch.mode = Node_Search_Mark;
-		else if (param == "start")
-			sch.mode = Node_Search_Start;
-		else if (param.length() > 0) {
-			sch.mode = Node_Search_Comment;
-			param = cpstr; param.replace(0, command.length(), ""); string_skip_spaces(param);
-			sch.str = param;
+		else if (parse_word(cmd, "merge")) {
+			if (! this->check_library_write_mode()) return;
+			this->session->tree_merge_rotations();
 		}
-		this->figrid->search(&sch);
+		else {
+			if (! this->check_has_library()) return;
+			this->session->rotate_into_tree();
+		}
+	}
+	else if (parse_word(cmd, "reflect") || parse_word(cmd, "flip")) {
+		if (parse_word(cmd, "h"))
+			this->session->rotate(Reflect_Horizontal);
+		else if (parse_word(cmd, "v"))
+			this->session->rotate(Reflect_Vertical);
+		else if (parse_word(cmd, "ld"))
+			this->session->rotate(Reflect_Left_Diagonal);
+		else if (parse_word(cmd, "rd"))
+			this->session->rotate(Reflect_Right_Diagonal);
+		else return;
+		this->str_prev_cmd = strin;
+	}
+	else if (parse_word(cmd, "search")) {
+		if (! this->check_has_library()) return;
+
+		NodeSearch sch; vector<Recording> result;
+		sch.mode = Node_Search_Leaf; sch.result = &result;
 		
-		if (this->tag_pipe || result.size() > 1) {
+		while (true) {
+			if (parse_word(cmd, "pos")) {
+				sch.mode = (Node_Search_Mode)(sch.mode | Node_Search_Position);
+				sch.pos = read_single_move(cmd);
+				if (! parse_word(cmd, (string)(sch.pos))) break;
+			}
+			else if (parse_word(cmd, "mark"))
+				sch.mode = (Node_Search_Mode)(sch.mode | Node_Search_Mark);
+			else if (parse_word(cmd, "start"))
+				sch.mode = (Node_Search_Mode)(sch.mode | Node_Search_Start);
+			else if (cmd.length() > 0) {
+				sch.mode = (Node_Search_Mode)(sch.mode | Node_Search_Comment);
+				sch.str = cmd; break; //take the remaining of the line
+			}
+			else break;
+		}
+		this->session->search(&sch);
+		
+		if (this->flag_pipe || result.size() > 1) {
 			for (unsigned short i = 0; i < result.size(); i++) {
-				if (result[i].moves_count() == 0)
+				if (result[i].count() == 0)
 					cout << "(Current)" << endl;
 				else {
 					result[i].output(cout); cout << endl;
 				}
 			}
-			if (!this->tag_pipe) terminal_pause();
+			if (!this->flag_pipe) terminal_pause();
 		}
-	} else if (command == "mark") {
-		sstr >> param;
-		this->figrid->node_set_mark(true, param == "start");
-	} else if (command == "unmark") {
-		sstr >> param;
-		this->figrid->node_set_mark(false, param == "start");
-	} else if (command == "comment") {
-		if (this->tag_pipe && this->figrid->current_mode() == Figrid_Mode_Library_Read) {
-			string comment; this->figrid->tree_ptr()->get_current_comment(comment);
+	}
+	else if (parse_word(cmd, "mark")) {
+		if (! this->check_library_write_mode()) return;
+		this->session->node_set_mark(true, parse_word(cmd, "start"));
+	}
+	else if (parse_word(cmd, "unmark")) {
+		if (! this->check_library_write_mode()) return;
+		this->session->node_set_mark(false, parse_word(cmd, "start"));
+	}
+	else if (parse_word(cmd, "comment")) {
+		if (this->flag_pipe && this->session->current_mode() == Session_Mode_Library_Read) {
+			string comment; this->session->tree_ptr()->get_current_comment(comment);
 			if (comment.length() == 0) return;
 			cout << comment << endl; return;
 		}
-		
-		if (this->figrid->current_mode() != Figrid_Mode_Library_Write) return;
-		
-		string comment; this->figrid->tree_ptr()->get_current_comment(comment);
-		if (! this->tag_pipe) {
+
+		if (! this->check_library_write_mode()) return;
+
+		string comment; this->session->tree_ptr()->get_current_comment(comment);
+		if (! this->flag_pipe) {
 			terminal_clear();
 			if (comment.length() > 0)
 				cout << "Current comment:" << endl << comment << endl << "Input comment to be appended, ";
 			else
 				cout << "Input comment, ";
-			cout << "then enter \"end\" to continue:" << endl;
+			cout << "then enter a line \"end\" to continue:" << endl;
 		} else
 			if (comment != "") cout << comment << endl;
 		
 		string new_comment = ""; unsigned short new_lines_count = 0;
-		while (cin.getline(this->buf_getline, sizeof(this->buf_getline))) {
-			if ((string) this->buf_getline == "end") break;
+		string str_line;
+		while (this->get_line(str_line)) {
+			if (str_line == "end") break;
 			if (new_lines_count >= 1) new_comment += '\n';
-			new_comment += (string) this->buf_getline;  new_lines_count++;
+			new_comment += str_line;  new_lines_count++;
 		}
 		if (new_comment != "") {
 			if (comment.find("\n") != string::npos || (comment != "" && new_lines_count > 1))
@@ -273,100 +369,115 @@ void Figrid_TUI::execute(string& strin)
 			else if (comment != "")
 				comment += " ";
 			comment += new_comment;
-			this->figrid->node_set_comment(comment);
+			this->session->node_set_comment(comment);
 		}
-	} else if (command == "uncomment") {
-		string strempty = "";
-		this->figrid->node_set_comment(strempty);
-	} else if (command == "delete") {
-		if (this->figrid->current_mode() != Figrid_Mode_Library_Write) {
-			cout << "Invalid command. "; terminal_pause(); return;
+	}
+	else if (parse_word(cmd, "uncomment")) {
+		if (! this->check_library_write_mode()) return;
+		string str_empty = "";
+		this->session->node_set_comment(str_empty);
+	}
+	else if (parse_word(cmd, "move")) {
+		if (! this->check_library_write_mode()) return;
+		bool move_left;
+		if (parse_word(cmd, "l"))
+			move_left = true;
+		else if (parse_word(cmd, "r"))
+			move_left = false;
+		else return;
+
+		Move pos = read_single_move(cmd);
+		if (move_left)
+			this->session->tree_node_move_left(pos);
+		else
+			this->session->tree_node_move_right(pos);
+		this->str_prev_cmd = strin;
+	}
+	else if (parse_word(cmd, "delete")) {
+		if (! this->check_library_write_mode()) return;
+		this->session->tree_delete_node();
+	}
+	else if (parse_word(cmd, "standardize")) {
+		if (! this->check_library_write_mode()) return;
+		this->session->tree_help_standardize();
+	}
+	else if (parse_word(cmd, "save")) {
+		bool is_node_list = parse_word(cmd, "list");
+		if (! this->session->has_library()) is_node_list = true;
+		if (cmd == "") {
+			if (! this->flag_pipe) cout << "Enter library file name, including path: " << flush;
+			if (! this->get_line(cmd)) return;
 		}
-		this->figrid->tree_delete_node();
-	} else if (command == "save") {
-		if (this->figrid->current_mode() != Figrid_Mode_Library_Write) {
-			cout << "Invalid command. "; terminal_pause(); return;
-		}
-		param = cpstr; param.replace(0, command.length(), ""); string_skip_spaces(param);
-		if (param == "") {
-			if (! tag_pipe) cout << "Enter library file name, including path: " << flush;
-			cin >> param;
-		}
-		if (! this->figrid->save_renlib(param)) {
-			cout << "Failed to save file \"" << param << "\". "; terminal_pause();
+
+		bool suc;
+		if (! is_node_list)
+			suc = this->session->save_renlib(cmd);
+		else
+			suc = this->session->save_node_list(cmd);
+
+		if (! suc) {
+			cout << "Failed to save file \"" << cmd << "\". "; terminal_pause();
 		} else
-			this->figrid->set_mode(Figrid_Mode_Library_Read);
-	} else if (command == "close") {
-		this->figrid->set_mode(Figrid_Mode_None);
-	} else if (command == "help" || command == "h" || command == "?") { //for user
+			this->session->set_mode(Session_Mode_Library_Read);
+	}
+	else if (parse_word(cmd, "close")) {
+		if (!this->flag_pipe && this->session->current_mode() == Session_Mode_Library_Write) {
+			if (! ask_yes_no("Discard current data?")) return;
+		}
+		this->session->set_mode(Session_Mode_None);
+	}
+	else if (parse_word(cmd, "exit") || parse_word(cmd, "quit")) {
+		if (!this->flag_pipe && this->session->current_mode() == Session_Mode_Library_Write)
+			flag_exit = ask_yes_no("Discard current data and exit?");
+		else
+			flag_exit = true;
+	}
+	else if (parse_word(cmd, "help") || parse_word(cmd, "h") || parse_word(cmd, "?")) {
 		terminal_clear();
 		this->output_help();
 		terminal_pause();
-	} else if (command == "exit" || command == "quit") {
-		tag_exit = true;
-		if (!tag_pipe && this->figrid->current_mode() == Figrid_Mode_Library_Write) {
-			cout << "Discard current data and exit? (y/n) " << flush;
-			cin >> param;
-			if (param != "y") tag_exit = false;
-		}
-	} else {
-		sstr = stringstream(strin);
-		this->figrid->input(sstr);
+	}
+	else {
+		istringstream iss(cmd);
+		this->session->input(iss);
 	}
 }
 
-void Figrid_TUI::refresh()
+void FigridTUI::refresh()
 {
 	terminal_clear();
-	cout << "Figrid v0.15\t" << this->figrid->current_mode_str() << '\n';
-	
-	#ifdef _WIN32
-		if (! tag_ascii) {
-			ostringstream sstr;
-			this->figrid->board_print(sstr);
-			string str_board = sstr.str();
-			string_convert_to_ansi(str_board);
-			
-			if (str_board.find("?") != string::npos) //failed to transfer
-				tag_ascii = true;
-			else
-				cout << str_board;
-		}
-		if (tag_ascii) {
-			this->figrid->board_print(cout, true);
-		}
-	#else
-		this->figrid->board_print(cout);
-	#endif
-	
-	this->figrid->output(cout); cout << '\n';
-	if (this->figrid->current_mode() != Figrid_Mode_None)
-		this->figrid->output_node_info(cout, true);
-	figrid->output_game_status(cout);
+	cout << "Figrid v0.20\t" << this->session->current_mode_str() << '\n';
+	this->session->board_print(cout, this->flag_xo_board);
+	this->session->output(cout); cout << '\n';
+	if (this->session->has_library())
+		this->session->output_node_info(cout, true);
+	session->output_game_status(cout);
 	cout << "> " << flush;
 }
 
-int Figrid_TUI::run()
+int FigridTUI::run()
 {
-	if (! this->tag_pipe) {
+	if (! this->flag_pipe) {
+		#ifdef _WIN32
+			this->flag_xo_board = true;
+		#endif
 		terminal_color_change();
 		this->refresh();
 	}
 	
-	string strcpp;
-	while (cin.getline(this->buf_getline, sizeof(this->buf_getline)))
-	{
-		strcpp = (string) buf_getline;
-		this->execute(strcpp);
-		if (this->tag_exit) break;
-		if (! this->tag_pipe)
+	string str_cmd;
+	while (this->get_line(str_cmd)) {
+		this->execute(str_cmd);
+		if (this->flag_exit) break;
+		if (! this->flag_pipe)
 			this->refresh();
 		else {
-			this->figrid->output_node_info(cout, false);
+			this->session->output_node_info(cout, false);
 			cout << flush;
 		}
 	}
 	
+	if (! this->flag_pipe)
+		terminal_color_change_back();
 	return 0;
 }
-
