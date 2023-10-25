@@ -610,6 +610,8 @@ void Tree::help_standardize()
 			tmprec.undo();
 		}
 	}
+
+	this->query_recording(&rec_back);
 }
 
 void Tree::delete_current_pos()
