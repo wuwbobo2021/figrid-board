@@ -243,7 +243,7 @@ void FigridTUI::execute(string& strin)
 		if (cmd.length() == 0) return;
 		if (this->flag_pipe == false
 		&&  this->session->current_mode() == Session_Mode_Library_Write
-		&&  this->session->tree_ptr()->is_renlib_file(cmd)) {
+		&&  Tree::is_renlib_file(cmd)) {
 			if (! ask_yes_no("Discard current data?")) return;
 		}
 		if (! this->session->load_file(cmd, is_node_list)) {
@@ -296,8 +296,9 @@ void FigridTUI::execute(string& strin)
 	else if (parse_word(cmd, "search")) {
 		if (! this->check_has_library()) return;
 
-		NodeSearch sch; vector<Recording> result;
-		sch.mode = Node_Search_Leaf; sch.result = &result;
+		NodeSearch sch;
+		sch.mode = Node_Search_Leaf;
+		sch.direct_output = true; sch.p_ost = &cout;
 		
 		while (true) {
 			if (parse_word(cmd, "pos")) {
@@ -315,18 +316,10 @@ void FigridTUI::execute(string& strin)
 			}
 			else break;
 		}
-		this->session->search(&sch);
-		
-		if (this->flag_pipe || result.size() > 1) {
-			for (unsigned short i = 0; i < result.size(); i++) {
-				if (result[i].count() == 0)
-					cout << "(Current)" << endl;
-				else {
-					result[i].output(cout); cout << endl;
-				}
-			}
-			if (!this->flag_pipe) terminal_pause();
-		}
+		this->session->search(&sch); cout << flush;
+
+		if (!this->flag_pipe && sch.match_count > 1)
+			terminal_pause();
 	}
 	else if (parse_word(cmd, "mark")) {
 		if (! this->check_library_write_mode()) return;
@@ -338,14 +331,14 @@ void FigridTUI::execute(string& strin)
 	}
 	else if (parse_word(cmd, "comment")) {
 		if (this->flag_pipe && this->session->current_mode() == Session_Mode_Library_Read) {
-			string comment; this->session->tree_ptr()->get_current_comment(comment);
+			string comment; this->session->get_current_comment(comment);
 			if (comment.length() == 0) return;
 			cout << comment << endl; return;
 		}
 
 		if (! this->check_library_write_mode()) return;
 
-		string comment; this->session->tree_ptr()->get_current_comment(comment);
+		string comment; this->session->get_current_comment(comment);
 		if (! this->flag_pipe) {
 			terminal_clear();
 			if (comment.length() > 0)
@@ -417,7 +410,7 @@ void FigridTUI::execute(string& strin)
 
 		if (! suc) {
 			cout << "Failed to save file \"" << cmd << "\". "; terminal_pause();
-		} else
+		} else if (this->session->has_library())
 			this->session->set_mode(Session_Mode_Library_Read);
 	}
 	else if (parse_word(cmd, "close")) {

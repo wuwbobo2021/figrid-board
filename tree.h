@@ -42,9 +42,13 @@ struct NodeSearch
 	Node_Search_Mode mode = Node_Search_Leaf;
 	Move pos;
 	string str;
+	bool direct_output = false; //but the first match is always pushed into `result`
 	bool keep_cur_rec_in_result = false;
-
-	vector<Recording>* result;
+	bool disable_rotation = false;
+	
+	size_t match_count = 0;
+	vector<Recording>* p_result = NULL;
+	ostream* p_ost = NULL;
 };
 
 class Tree //Note: not designed for multi-thread processing
@@ -76,8 +80,8 @@ public:
 
 	unsigned short current_depth() const;
 	unsigned short current_degree() const;
-	Move current_move(bool rotate_back = true) const; //`rotate_back`: back to the direction of the original query
-	Recording get_current_recording(bool rotate_back = true) const; //get a copy of current recording
+	Move current_move(bool disable_rotation = false) const; //`disable_rotation`: don't rotate back to the direction of the original query
+	Recording get_current_recording(bool disable_rotation = false) const; //get a copy of current recording
 	void print_current_board(ostream& ost, bool use_ascii = false) const;
 	
 	bool current_mark(bool mark_start = false) const;
@@ -96,7 +100,7 @@ public:
 	unsigned short query_recording(const Recording* record); //check from root and goto the last existing move, involves rotation
 	Position_Rotation query_rotate_flag() const;
 	void clear_rotate_flag();
-	void search(NodeSearch* sch, bool rotate = true) const; //search in descendents of current node
+	void search(NodeSearch* sch) const; //search in descendents of current node
 
 	bool write_move(Move pos); //without rotation
 	bool node_move_left(Move pos);

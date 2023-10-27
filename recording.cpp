@@ -510,7 +510,7 @@ unsigned char Recording::board_get_row(Board_Row_Direction direction, Move pos, 
 
 void Recording::board_rotate(Position_Rotation rotation)
 {
-	if (this->cnt_all < 1) return;
+	if (this->cnt_all < 1 || rotation == Rotate_None) return;
 
 	for (unsigned short i = 0; i < this->cnt_all; i++) {
 		if (this->moves[i].pos_is_null()) continue;

@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <string>
 #include <fstream>
+#include <vector>
 
 #include "session.h"
 #include "tree.h"
@@ -157,7 +158,7 @@ void Session::output_current_node(ostream& ost, bool print_comment = true, bool 
 {
 	if (this->has_library() && this->tree.current_depth() > 0
 	&&  this->tree.query_rotate_flag() != Rotate_None)
-		ost << (string) this->tree.current_move(false) << "->";
+		ost << (string) this->tree.current_move(true) << "->";
 	ost << (string) this->tree.current_move();
 	
 	if (this->tree.current_mark(true))   ost << ":" << "Start";
@@ -210,7 +211,7 @@ void Session::output_node_info(ostream& ost, bool print_comment)
 	this->tree.cur_move_up();
 }
 
-void Session::board_print(ostream& ost, bool use_ascii)
+void Session::board_print(ostream& ost, bool use_ascii) const
 {
 	if (this->has_library() && this->match_count() >= this->rec.count())
 		this->tree.print_current_board(ost, use_ascii);
@@ -218,14 +219,23 @@ void Session::board_print(ostream& ost, bool use_ascii)
 		this->rec.board_print(ost, use_ascii);
 }
 
+bool Session::get_current_comment(string& comment) const
+{
+	if (! this->has_library()) return false;
+	return this->tree.get_current_comment(comment);
+}
+
 void Session::search(NodeSearch* sch)
 {
 	if (! this->has_library()) return;
 
+	vector<Recording> vect_rec;
+	if (sch->p_result == NULL) sch->p_result = &vect_rec;
+
 	this->tree.search(sch);
 
-	if (sch->result->size() == 1) { //only one search result
-		this->rec.append(&((* sch->result)[0]));
+	if (sch->match_count == 1) { //only one search result
+		this->rec.append(&((* sch->p_result)[0]));
 		if (! this->p_rule->check_recording())
 			this->p_rule->undo_invalid_moves();
 		this->tree.query_recording(& this->rec);
@@ -407,18 +417,16 @@ bool Session::save_node_list(const string& file_path)
 	ofstream ofs(file_path, ios::out);
 	if (! ofs.is_open()) return false;
 
-	vector<Recording> vect_rec;
 	if (this->has_library()) {
 		NodeSearch sch; 
-		sch.mode = Node_Search_Leaf; sch.result = &vect_rec;
+		sch.mode = Node_Search_Leaf;
+		sch.direct_output = true; sch.p_ost = &ofs;
 		this->tree.cur_goto_root();
 		this->tree.search(&sch);
-	} else
-		vect_rec.push_back(this->rec);
-
-	for (size_t i = 0; i < vect_rec.size(); i++) {
-		vect_rec[i].output(ofs); ofs << '\n';
+	} else {
+		this->rec.output(ofs); ofs << '\n';
 	}
+
 	ofs.flush(); ofs.close();
 
 	this->tree.query_recording(& this->rec);

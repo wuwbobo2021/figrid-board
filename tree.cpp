@@ -85,28 +85,28 @@ unsigned short Tree::current_degree() const
 	return cnt;
 }
 
-Move Tree::current_move(bool rotate_back) const
+Move Tree::current_move(bool disable_rotation) const
 {
 	Move mv;
 	if (this->cur == NULL) return mv; //return null move
 	
 	mv = this->cur->pos;
-	if (rotate_back)
+	if (! disable_rotation)
 		mv.rotate(this->board_size, reverse_rotation(this->flag_rotate)); //rotate back
 	return mv;
 }
 
-Recording Tree::get_current_recording(bool rotate_back) const
+Recording Tree::get_current_recording(bool disable_rotation) const
 {
 	Recording rec = this->rec;
-	if (rotate_back)
+	if (! disable_rotation)
 		rec.board_rotate(reverse_rotation(this->flag_rotate));
 	return rec;
 }
 
 void Tree::print_current_board(ostream& ost, bool use_ascii) const
 {
-	Recording rec = this->get_current_recording(true); //rotate back to meet original query
+	Recording rec = this->get_current_recording(false); //rotate back to meet original query
 	
 	Move dots[this->current_degree()];
 	if (this->cur != NULL && this->cur->down != NULL) {
@@ -327,17 +327,25 @@ static inline void string_to_lower_case(string& str)
 		str[i] = tolower(str[i]);
 }
 
-void Tree::search(NodeSearch* sch, bool rotate) const
+void Tree::search(NodeSearch* sch) const
 {
-	if (this->cur == NULL) return;
-	
+	if (this->cur == NULL || sch == NULL) return;
+	if (sch->direct_output && sch->p_ost == NULL) return;
+	if (!sch->direct_output && sch->p_result == NULL) return;
+	sch->match_count = 0;
+
+	bool rotate = (!sch->disable_rotation && this->flag_rotate != Rotate_None);
+
 	Move spos = sch->pos; if (rotate) spos.rotate(this->board_size, this->flag_rotate);
 	string sstr = sch->str; string_to_lower_case(sstr);
 	
 	Node* psubroot = this->cur; Node* pcur = psubroot;
 	stack<Node*> node_stack; Recording tmprec(this->board_size);
 	if (sch->keep_cur_rec_in_result) tmprec = this->rec;
-
+	
+	Recording* precadd; Recording tmprec_ro(this->board_size);
+	if (rotate) precadd = &tmprec_ro; else precadd = &tmprec;
+	
 	while (true) {
 		bool suc = true;
 		if (sch->mode == Node_Search_Leaf) {
@@ -365,13 +373,20 @@ void Tree::search(NodeSearch* sch, bool rotate) const
 		}
 		
 		if (suc) {
-			if (! rotate)
-				sch->result->push_back(tmprec);
-			else {
-				Recording tmprec2 = tmprec;
-				tmprec2.board_rotate(reverse_rotation(this->flag_rotate)); //rotate back
-				sch->result->push_back(tmprec2);
+			sch->match_count++;
+			if (rotate) {
+				tmprec_ro = tmprec;
+				tmprec_ro.board_rotate(reverse_rotation(this->flag_rotate)); //rotate back
 			}
+			if (sch->direct_output) {
+				if (precadd->count())
+					precadd->output(* sch->p_ost);
+				else
+					cout << "(Current)" << '\n';
+				(* sch->p_ost) << '\n';
+			}
+			if (!sch->direct_output || (sch->p_result && sch->match_count == 1))
+				sch->p_result->push_back(*precadd);
 		}
 		
 		if (pcur->down != NULL && !(suc && (sch->mode & Node_Search_Position))) {
@@ -825,7 +840,7 @@ bool Tree::save_renlib(const string& file_path) const
 		rnode.has_sibling = (pcur->right != NULL);
 		rnode.is_leaf = (pcur->down == NULL);
 		
-		ofs.write((char*) &rnode, sizeof(rnode));
+		ofs.write((char*) &rnode, 2);
 		
 		if (pcur->has_comment) {
 			string str = this->comments[pcur->tag_comment];

@@ -1,5 +1,5 @@
 # Figrid
-Version 0.20 (2023-10-25)
+Version 0.20 (2023-10-27)
 
 A recording software for the Five-in-a-Row game which can run on Linux shell and is compatible with Renlib.
 

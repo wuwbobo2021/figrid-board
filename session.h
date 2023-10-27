@@ -54,8 +54,8 @@ public:
 	void output(ostream& ost, bool show_round_num = true) const;
 	void output_game_status(ostream& ost) const;
 	void output_node_info(ostream& ost, bool print_comment = false); //single-line comment
-	void board_print(ostream& ost, bool use_ascii = false);
-	
+	void board_print(ostream& ost, bool use_ascii = false) const;
+	bool get_current_comment(string& comment) const;
 	void search(NodeSearch* sch);
 	
 	bool undo(unsigned short steps = 1);

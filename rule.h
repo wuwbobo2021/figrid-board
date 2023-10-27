@@ -28,7 +28,7 @@ enum Game_Status: unsigned char
 class Rule
 {
 protected:
-	Recording* crec;
+	Recording* crec = NULL;
 	Game_Status cstatus = (Game_Status) 0;
 	unsigned short invalid_count = 0;
 	
