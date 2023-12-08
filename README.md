@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://github.com/wuwbobo2021/figrid-board/blob/master/logo.png?raw=true">
+  <img src="https://github.com/wuwbobo2021/figrid-board/blob/main/logo.png?raw=true">
 </div>
 
 # Figrid
