@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="https://github.com/wuwbobo2021/figrid-board/blob/master/logo.png?raw=true">
+</div>
+
 # Figrid
 Version 0.20 (2023-10-27)
 
