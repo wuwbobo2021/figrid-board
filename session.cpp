@@ -99,7 +99,7 @@ void Session::input(istream& ist, bool multiline)
 	}
 	
 	if (this->mode == Session_Mode_Library_Read) {
-		if (cnt_inc > 1 || this->tree.current_depth() <= 5)
+		if (cnt_inc > 1 || this->tree.current_depth() <= 5 || this->query_rotate_flag())
 			this->tree.query_recording(& this->rec);
 		else
 			this->tree.query_move(this->rec.last_move());
