@@ -1,0 +1,16 @@
+[package]
+name = "figrid-board"
+version = "0.3.0"
+edition = "2021"
+description = ""
+
+[dependencies]
+num_enum = "0.7.3"
+
+[lib]
+name = "figrid_board"
+path = "lib.rs"
+
+[[bin]]
+name = "figrid-board"
+path = "main.rs"
