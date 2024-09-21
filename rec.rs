@@ -1,7 +1,5 @@
 use std::{
-	slice,
-	ops::Index,
-	fmt::{self, Display}
+	slice, fmt
 };
 
 use crate::{
@@ -11,142 +9,109 @@ use crate::{
 	Error
 };
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Rec<const SZ: usize, const LEN: usize> {
-	len: usize,
-	cnt_pass: u8,
-	seq: [Coord<SZ>; LEN],
-	grid: [[CoordState; SZ]; SZ], //array of vertical colomns, use it with [x][y]
-	out_fmt: (String, bool) //divider, print_no
-}
-
-pub type Rec15 = Rec<15, {15*15 + 16}>; //maximum 16 pass moves
-pub type Rec19 = Rec<19, {19*19 + 16}>;
-
-impl<const SZ: usize, const LEN: usize> Rec<SZ, LEN> {
-	#[inline]
-	pub fn new() -> Self {
-		Self {
-			len: 0,
-			cnt_pass: 0u8,
-			seq: [Coord::new(); LEN],
-			grid: [[CoordState::Empty; SZ]; SZ],
-			out_fmt: (" ".to_string(), true)
-		}
-	}
+/// Trait for all types that store `Coord<SZ>` sequence in continuous memory
+/// and don't allow any coordinate value (except null) to be repeated.
+/// Any even index corresponds to a black stone, odd index means it is white.
+/// 
+/// Some wrapper (like `GameRec`) can be created in the future, for storing
+/// extra informations and ensuring some rules to be followed.
+pub trait Rec<const SZ: usize> {
+	/// Returns a slice of all added coordinates.
+	fn as_slice(&self) -> &[Coord<SZ>];
+	/// Returns the state at a coordinate, or `CoordState::Empty` if `coord` is null.
+	fn coord_state(&self, coord: Coord<SZ>) -> CoordState;
+	/// Returns the state at a coordinate, causes UB if `coord` is null.
+	unsafe fn coord_state_unchecked(&self, coord: Coord<SZ>) -> CoordState;
+	/// Count of all added coordinates.
+	fn len(&self) -> usize;
+	/// Possible maximum amount of coordinates (including null).
+	fn len_max() -> usize;
+	/// Count of all non-null coordinate.
+	fn stones_count(&self) -> usize;
+	/// Returns `false` if `len_max` isn't reached and the board isn't full.
+	fn is_full(&self) -> bool;
 	
+	/// Adds a coordinate into the sequence. Returns `Error::CoordNotEmpty`
+	/// if the coordinate exists in the stored sequence. Other rules can be defined.
+	fn add(&mut self, coord: Coord<SZ>) -> Result<(), Error>;
+	/// Undo the last move (removes the last coordinate). Returns `Error::RecIsEmpty`
+	/// if there is no move. Other rules can be defined.
+	fn undo(&mut self) -> Result<Coord<SZ>, Error>;
+	/// Clears the record.
+	fn clear(&mut self);
+
+	/// Returns an iterator of all added coordinates (from first to last).
 	#[inline(always)]
-	pub fn as_slice(&self) -> &[Coord<SZ>] {
-		&self.seq[..self.len]
-	}
-	
-	#[inline(always)]
-	pub fn iter(&self) -> slice::Iter<'_, Coord<SZ>> {
+	fn iter(&self) -> slice::Iter<'_, Coord<SZ>> {
 		self.as_slice().iter()
 	}
 	
+	/// Checks if the record is empty.
 	#[inline(always)]
-	pub fn coord_state(&self, coord: Coord<SZ>) -> CoordState {
-		if coord.is_real() {
-			// SAFETY: assumes coord is valid
-			unsafe { self.coord_state_unchecked(coord) }
-		} else {
-			CoordState::Empty
-		}
-	}
-}
-
-impl<const SZ: usize, const LEN: usize> Index<usize> for Rec<SZ, LEN> {
-    type Output = Coord<SZ>;
-
-	#[inline(always)]
-    fn index(&self, i: usize) -> &Coord<SZ> {
-        &self.as_slice()[i]
-    }
-}
-
-impl<const SZ: usize, const LEN: usize> Rec<SZ, LEN> {
-	const SZ_X_SZ: usize = SZ*SZ;
-	
-	#[inline(always)]
-	pub fn len(&self) -> usize {
-		self.len
+	fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 	
-	pub fn stones_count(&self) -> usize {
-		self.len - self.cnt_pass as usize
-	}
-	
+	/// Returns the last coordinate (move), or `None` if the record is empty.
 	#[inline(always)]
-	pub fn is_empty(&self) -> bool {
-		self.len == 0
-	}
-	
-	#[inline(always)]
-	pub fn is_full(&self) -> bool {
-		// `>` should be impossible
-		self.len >= LEN || self.stones_count() >= Self::SZ_X_SZ
-	}
-	
-	#[inline(always)]
-	pub fn last_coord(&self) -> Option<Coord<SZ>> {
+	fn last_coord(&self) -> Option<Coord<SZ>> {
 		if ! self.is_empty() {
 			// SAFETY: assumes self.len is valid
-			Some(* unsafe { self.seq.get_unchecked(self.len - 1) })
+			Some(* unsafe { self.as_slice().get_unchecked(self.len() - 1) })
 		} else {
 			None
 		}
 	}
 	
+	/// Returns the stone color of the next coordinate (move) to be added.
+	/// It does not check if the record is full.
 	#[inline(always)]
-	pub fn color_next(&self) -> CoordState {
-		if self.len % 2 == 0 {
+	fn color_next(&self) -> CoordState {
+		if self.len() % 2 == 0 {
 			CoordState::Black
 		} else {
 			CoordState::White
 		}
 	}
-}
-
-impl<const SZ: usize, const LEN: usize> Rec<SZ, LEN> {
-	#[inline(always)]
-	pub fn add(&mut self, coord: Coord<SZ>) -> Result<(), Error> {
-		if self.len >= LEN {
-			return Err(Error::RecIsFull);
+	
+	/// Tries to append all coordinates got from iterator `coords`
+	/// into the current record, stops at the first failure of `add()`.
+	/// Always return the count of added coordinates.
+	#[inline]
+	fn append(&mut self, coords: impl Iterator<Item = Coord<SZ>>) -> Result<usize, usize> {
+		let mut i: usize = 0;
+		for c in coords {
+			if ! self.add(c).is_ok() { return Err(i); }
+			i += 1;
 		}
-		if self.coord_state(coord) != CoordState::Empty {
-			return Err(Error::CoordNotEmpty);
-		}
-		
-		if coord.is_real() {
-			*(self.coord_state_mut(coord)?) = self.color_next();
-		} else {
-			self.cnt_pass += 1;
-		}
-		// SAFETY: assumes self.len is valid
-		* unsafe {
-			self.seq.get_unchecked_mut(self.len)
-		} = coord;
-		self.len += 1;
-		Ok(())
+		Ok(i)
 	}
 	
-	#[inline(always)]
-	pub fn undo(&mut self) -> Result<Coord<SZ>, Error> {
-		let c = self.last_coord().ok_or(Error::RecIsEmpty)?;
-		self.len -= 1;
-		if let Ok(mut_stat) = self.coord_state_mut(c) {
-			*mut_stat = CoordState::Empty;
-		} else {
-			self.cnt_pass -= 1;
+	/// Tries to append all coordinates parsed from `str_coords`
+	/// into the current record, stops at the first failure of `add()`.
+	/// Always return the count of added coordinates.
+	fn append_str(&mut self, str_coords: &str) -> Result<usize, usize> {
+		let mut len_checked = 0;
+		let mut cnt_added = 0;
+		while let Some((c, l)) = Coord::<SZ>::parse_str(&str_coords[len_checked..]) {
+			self.add(c).map_err(|_| cnt_added)?;
+			cnt_added += 1;
+			len_checked += l;
 		}
-		Ok(c)
+		if cnt_added > 0 {
+			Ok(cnt_added)
+		} else {
+			Err(0)
+		}
 	}
 	
-	#[inline(always)]
-	pub fn back_to(&mut self, coord: Coord<SZ>) -> Result<usize, Error> {
+	/// Finds `coord` in the sequence reversely, returns the count of
+	/// removed coordinates after `coord` if it's found, otherwise
+	/// returns `Error::ItemNotExist`.
+	#[inline]
+	fn back_to(&mut self, coord: Coord<SZ>) -> Result<usize, Error> {
 		if let Some(i) = self.iter().rposition(|&c| c == coord) {
-			let steps = (self.len - 1) - i;
+			let steps = (self.len() - 1) - i;
 			for _ in 0..steps {
 				let _ = self.undo();
 			}
@@ -156,19 +121,24 @@ impl<const SZ: usize, const LEN: usize> Rec<SZ, LEN> {
 		}
 	}
 	
+	/// Rotates the board by `rotation`, changes all valid coordinates.
 	#[inline(always)]
-	pub fn clear(&mut self) {
-		self.len = 0;
-		self.cnt_pass = 0;
-		self.grid = [[CoordState::Empty; SZ]; SZ];
+	fn rotate(&mut self, rotation: Rotation) {
+		self.transform(|c| c.rotate(rotation))
 	}
 	
+	/// Translates all stones by `x` and `y` offsets, changes all valid coordinates.
+	/// Returns `Error::TransformFailed` if some stones are out of range after translation,
+	/// in this case the original record should be kept.
 	#[inline(always)]
-	pub fn rotate(&mut self, rotation: Rotation) {
-		self.transform(|c| rotation.rotate_coord(c))
+	fn translate(&mut self, x: i8, y: i8) -> Result<(), Error> {
+		self.transform_checked(|c| c.offset(x, y))
 	}
 	
-	pub fn transform(&mut self, f: impl Fn(Coord<SZ>) -> Coord<SZ>) {
+	/// Changes values of all valid coordinates by `f` and refreshes the board.
+	/// Do make sure `f` is one-to-one mapping and the returned value is always valid,
+	/// otherwise it may generate an unknown result.
+	fn transform(&mut self, f: impl Fn(Coord<SZ>) -> Coord<SZ>) {
 		// Note: Vec is used
 		let seq = self.iter().map(
 			|&c| if c.is_real() { f(c) } else { c }
@@ -180,7 +150,10 @@ impl<const SZ: usize, const LEN: usize> Rec<SZ, LEN> {
 		}
 	}
 	
-	pub fn transform_checked<F>(&mut self, f: F) -> Result<(), Error>
+	/// Changes values of all valid coordinates by `f` and refreshes the board.
+	/// Returns `Error::TransformFailed` if failed, in such case the record sequence
+	/// becomes dirty (has an unknown length).
+	fn transform_checked<F>(&mut self, f: F) -> Result<(), Error>
 		where F: Fn(Coord<SZ>) -> Option<Coord<SZ>>
 	{
 		let seq = self.iter().map(
@@ -199,21 +172,43 @@ impl<const SZ: usize, const LEN: usize> Rec<SZ, LEN> {
 		}
 		Ok(())
 	}
-}
 
-impl<const SZ: usize, const LEN: usize> Rec<SZ, LEN> {
-	fn write(&self, f: &mut impl fmt::Write) -> std::fmt::Result {
-		let (ref divider, print_no) = self.out_fmt;
-		for (i, c) in self.iter().enumerate() {
-			if print_no && i % 2 == 0 {
-				write!(f, "{}. ", i % 2)?;
+	/// Prints the current record (for example, to a `String`) in a readable format.
+	/// It might be overrided if the format does not meet the requirement.
+	/// 
+	/// ```
+	/// use figrid_board::{ Rec, BaseRec15 };
+	/// let rec: BaseRec15 = "l10j7k6m11m13".parse().unwrap();
+	/// let mut s = String::new();
+	/// rec.print_str(&mut s, ", ", false);
+	/// assert_eq!(s, "l10, j7, k6, m11, m13");
+	/// s.clear(); rec.print_str(&mut s, ",", true);
+	/// assert_eq!(s, "1. l10,j7 2. k6,m11 3. m13");
+	/// ```
+	fn print_str(&self, f: &mut impl fmt::Write, divider: &str, print_no: bool) -> std::fmt::Result {
+		if self.is_empty() { return Ok(()); }
+		if print_no {
+			for (i, c) in self.iter().enumerate() {
+				if i % 2 == 0 {
+					let div = if i < self.len() - 1 {divider} else {""};
+					write!(f, "{}. {}{}", i / 2 + 1, c, div)?;
+				} else {
+					write!(f, "{} ", c)?;
+				}
 			}
-			write!(f, "{}{}", c, divider)?;
+		} else {
+			for c in self.iter().take(self.len() - 1) {
+				write!(f, "{}{}", c, divider)?;
+			}
+			write!(f, "{}", self.last_coord().unwrap())?;
 		}
 		Ok(())
 	}
 	
-	pub fn print_board(&self, f: &mut impl fmt::Write, dots: &[Coord<SZ>], full_char: bool)
+	/// Draws the board by characters. `dots` gives extra information to be shown on the board,
+	/// set to `&[]` if not needed; set `full_char` to `true` if non-ASCII output is possible
+	/// (and ambiguous width characters should be fullwidth).
+	fn print_board(&self, f: &mut impl fmt::Write, dots: &[Coord<SZ>], full_char: bool)
 		-> std::fmt::Result
 	{
 		#[allow(non_snake_case)] let SIZE: u8 = SZ as u8;
@@ -251,14 +246,14 @@ impl<const SZ: usize, const LEN: usize> Rec<SZ, LEN> {
 						else                                   { ch_emp }
 					},
 					CoordState::Black => {
-						if coord != self.last_coord().unwrap_or(Coord::COORD_NULL) {
+						if coord != self.last_coord().unwrap_or(Coord::new()) {
 							ch_black
 						} else {
 							ch_black_last
 						}
 					},
 					CoordState::White => {
-						if coord != self.last_coord().unwrap_or(Coord::COORD_NULL) {
+						if coord != self.last_coord().unwrap_or(Coord::new()) {
 							ch_white
 						} else {
 							ch_white_last
@@ -275,41 +270,5 @@ impl<const SZ: usize, const LEN: usize> Rec<SZ, LEN> {
 		}
 		write!(f, "\n")?;
 		Ok(())
-	}
-}
-
-impl<const SZ: usize, const LEN: usize> Display for Rec<SZ, LEN> {
-	#[inline(always)]
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		self.write(f)
-	}
-}
-
-impl<const SZ: usize, const LEN: usize> Rec<SZ, LEN> {
-	#[inline(always)]
-	unsafe fn coord_state_unchecked(&self, coord: Coord<SZ>) -> CoordState {
-		unsafe { *(
-			(self.grid.get_unchecked(coord.x() as usize) as &[CoordState; SZ])
-				.get_unchecked(coord.y() as usize)
-		)}
-	}
-	
-	#[inline(always)]
-	fn coord_state_mut(&mut self, coord: Coord<SZ>) -> Result<&mut CoordState, Error> {
-		if coord.is_real() {
-			// SAFETY: assumes coord is valid
-			Ok(unsafe { self.coord_state_mut_unchecked(coord) })
-		} else {
-			Err(Error::InvalidCoord)
-		}
-	}
-	
-	#[inline(always)]
-	unsafe fn coord_state_mut_unchecked(&mut self, coord: Coord<SZ>) -> &mut CoordState {
-		// SAFETY: coord is NOT null
-		unsafe {
-			(self.grid.get_unchecked_mut(coord.x() as usize) as &mut [CoordState; SZ])
-				.get_unchecked_mut(coord.y() as usize)
-		}
 	}
 }

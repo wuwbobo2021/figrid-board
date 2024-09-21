@@ -1,9 +1,20 @@
-mod errors;
 mod coord;
 mod rec;
-mod transform;
+mod rec_base;
 
-pub use errors::*;
 pub use coord::*;
 pub use rec::*;
-pub use transform::*;
+pub use rec_base::*;
+
+/// Possible errors returned by `figrid_board`.
+#[derive(Clone, Debug, PartialEq)]
+#[repr(u8)]
+pub enum Error {
+	ParseError,
+	InvalidCoord,
+	CoordNotEmpty,
+	RecIsEmpty,
+	RecIsFull,
+	ItemNotExist,
+	TransformFailed
+}

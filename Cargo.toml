@@ -1,11 +1,18 @@
 [package]
 name = "figrid-board"
 version = "0.3.0"
+authors = ["wuwbobo2021 <wuwbobo@outlook.com>"]
 edition = "2021"
-description = ""
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+description = """
+A library for the Five-in-a-Row (Gomoku) game.
+"""
+
+keywords = ["game", "board", "gomoku"]
+categories = ["data-structures", "game-development"]
 
 [dependencies]
-num_enum = "0.7.3"
 
 [lib]
 name = "figrid_board"
