@@ -2,7 +2,7 @@
 name = "figrid-board"
 version = "0.3.0"
 authors = ["wuwbobo2021 <wuwbobo@outlook.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 description = """
@@ -19,5 +19,10 @@ name = "figrid_board"
 path = "lib.rs"
 
 [[bin]]
-name = "figrid-board"
+name = "pbrain-figrid"
 path = "main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
