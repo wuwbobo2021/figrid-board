@@ -44,8 +44,9 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Evaluator<SZ, LEN, CH> {
 
 /// Operates for all nodes under the relative depth beneath the current node;
 /// then comes back to the original node. Custom `operation` must leave the tree depth
-/// (after operation) the same as the depth before the operation; it should not try to
-/// delete nodes at (or above) this specified relative depth.
+/// (after operation) the same as the depth before the operation; after the operation,
+/// the tree cursor should be set back to the location before the `operation`; it shouldn't
+/// try to delete nodes at (or above) this specified relative depth.
 macro_rules! traversal_in_depth {
     ($tree_name:ident, $trav_dep:expr, $operation:block) => {
         let mut macro_stack = Stack::new();

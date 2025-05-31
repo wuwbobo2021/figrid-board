@@ -70,6 +70,13 @@ impl RowsScore {
             return i16::MIN;
         }
         // excluded connected 4 for self's turn from now on
+        if sum_b.cnts[4 - 1] > 1 {
+            return i16::MAX; // here, color_next is white, sum_w.cnts[4 - 1] == 0
+        }
+        if sum_w.cnts[4 - 1] > 1 {
+            return i16::MIN; // here, color_next is black, sum_b.cnts[4 - 1] == 0
+        }
+        // excluded double 4 on opponent's turn from now on
         if sum_b.cnt_live_3 > 0 && sum_w.cnts[4 - 1] == 0 && color_next.is_black() {
             return i16::MAX;
         }
