@@ -89,7 +89,7 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Eval<SZ> for Evaluator<SZ,
         if self.is_full() {
             return Coord::new();
         }
-        let t_timeout = Instant::now() + self.t_max - Duration::from_millis(50);
+        let t_timeout = Instant::now() + self.t_max * 75 / 100 - Duration::from_millis(50);
 
         let mut tree = EvalTree::new(&self.rec);
 
@@ -100,7 +100,7 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Eval<SZ> for Evaluator<SZ,
             tree.cur_go_down().unwrap();
             return tree.cur_coord();
         }
-        traversal_in_depth!(tree, 1, { tree.cur_expand_depth(7, 5) });
+        traversal_in_depth!(tree, 1, { tree.cur_expand_depth(7, 4) });
         tree.cur_order_minimax();
 
         if Instant::now() >= t_timeout {
@@ -110,10 +110,10 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Eval<SZ> for Evaluator<SZ,
 
         tree.cur_reduce_branches(10);
         traversal_in_depth!(tree, 1, { tree.cur_cut_branches(3) });
+        traversal_in_depth!(tree, 4 - 1, { tree.cur_reduce_branches(4) });
         traversal_in_depth!(tree, 5 - 1, { tree.cur_reduce_branches(4) });
-        traversal_in_depth!(tree, 6 - 1, { tree.cur_reduce_branches(4) });
 
-        let mut depth_expand = 6;
+        let mut depth_expand = 5;
         let mut cnt_loops = 0;
         loop {
             if Instant::now() >= t_timeout {
