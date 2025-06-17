@@ -10,6 +10,7 @@ use nodes::{Node, NodePtr, NodePtrOpt, NodeStore};
 mod nodes {
     use super::*;
 
+    /// Bump storage used by a `Tree`.
     #[derive(Debug)]
     pub struct NodeStore<T> {
         boxes: [Option<Box<[MaybeUninit<T>]>>; BOXES_CNT_MAX],
@@ -17,12 +18,14 @@ mod nodes {
         cnt_units: u16,
     }
 
+    /// Accessor of an item in the bump storage.
     #[derive(Clone, Copy, Debug, PartialEq)]
     pub struct NodePtr {
         lower: u16,
         upper: u16,
     }
 
+    /// An option of `NodePtr`, similar to [std::option::Option].
     #[derive(Clone, Copy, Debug, PartialEq)]
     pub struct NodePtrOpt {
         lower: u16,
@@ -30,6 +33,7 @@ mod nodes {
     }
 
     impl NodePtrOpt {
+        /// Returns a "none" value.
         #[inline(always)]
         pub const fn none() -> Self {
             Self {
@@ -49,6 +53,7 @@ mod nodes {
             !self.is_none()
         }
 
+        /// Returns true if it equals `other`.
         #[inline(always)]
         pub fn eq_ptr(&self, other: NodePtr) -> bool {
             self.lower == other.lower && self.upper == other.upper
@@ -201,6 +206,7 @@ mod nodes {
         }
     }
 
+    /// A node in the tree structure.
     #[derive(Clone, Debug)]
     pub struct Node<const SZ: usize, T: Default + Clone> {
         pub coord: Coord<SZ>,
@@ -221,6 +227,7 @@ mod nodes {
         }
     }
 
+    /// An efficient stack structure without heap usage.
     pub struct Stack<T> {
         arr: [MaybeUninit<T>; CUR_SEQ_MAX_CNT],
         len: u16,
@@ -300,8 +307,19 @@ mod nodes {
     }
 }
 
-/// Note: the tree itself doesn't check for repeated coordinates in any possible route.
+/// Generic tree structure for the Five-in-a-Row game.
+///
+/// `SZ` is the board size; `T` is the carried information of each node.
+///
+/// This is a single-threaded model; to operate within the tree, the user can move
+/// the internal cursor which is always located at a node at any timepoint. Each node
+/// stores a [Coord] and a `T`, an optional left child and an optional right sibling.
+///
+/// Notes:
+/// - The tree itself doesn't check for repeated coordinates in any possible route.
+/// - [Tree::compress] can be called to clear deleted nodes in the internal bump storage.
 pub struct Tree<const SZ: usize, T: Default + Clone> {
+    // NOTE: don't pass `NodePtr` across different trees, otherwise there would be UBs!
     storage: NodeStore<Node<SZ, T>>,
     root: NodePtr,
     cur: NodePtr,
@@ -310,18 +328,22 @@ pub struct Tree<const SZ: usize, T: Default + Clone> {
 }
 
 impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
+    /// Creates an empty tree and sets the cursor at the root node.
     pub fn new() -> Self {
+        // SAFETY: Don't pass `NodePtr` across different trees!
         let mut storage = unsafe { NodeStore::new() };
         let root = storage.store(Node::new());
         Self {
             storage,
-            root: root,
+            root,
             cur: root,
             cur_seq: std::array::from_fn(|_| root),
             cur_dep: 0,
         }
     }
 
+    /// Returns the RAM usage of the tree, including the internal bump storage.
+    /// Note: this doesn't count for possible heap usage of `T`.
     pub fn ram_used(&self) -> usize {
         size_of::<Self>() + self.storage.ram_used()
     }
@@ -351,41 +373,63 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         self.access_mut(self.cur)
     }
 
+    /// Returns the depth of the current cursor. Depth of the root node is 0.
     #[inline(always)]
     pub fn cur_depth(&self) -> u16 {
         self.cur_dep
     }
 
+    /// Returns the [Coord] of the cursored node.
     #[inline(always)]
     pub fn cur_coord(&self) -> Coord<SZ> {
         self.cur_node().coord
     }
 
+    /// Returns a reference of the carried information of the cursored node.
     #[inline(always)]
     pub fn cur_info(&self) -> &T {
         &self.cur_node().info
     }
 
+    /// Returns a mutable reference of the carried information of the cursored node.
     #[inline(always)]
     pub fn cur_info_mut(&mut self) -> &mut T {
         &mut self.cur_node_mut().info
     }
 
+    /// Returns true if the cursored node is a leaf node.
     #[inline(always)]
     pub fn cur_is_leaf(&self) -> bool {
         self.cur_node().down.is_none()
     }
 
+    /// Returns true if the cursored node is not a leaf node.
     #[inline(always)]
     pub fn cur_has_down(&self) -> bool {
         self.cur_node().down.is_some()
     }
 
+    /// Returns true if the cursored node has at least one right node.
     #[inline(always)]
     pub fn cur_has_right(&self) -> bool {
         self.cur_node().right.is_some()
     }
 
+    /// Returns true if the left child of the cursored node is a leaf node.
+    #[inline(always)]
+    pub fn down_is_leaf(&self) -> Option<bool> {
+        let down = self.cur_node().down.get()?;
+        Some(self.access(down).down.is_none())
+    }
+
+    /// Tries to get the information from the left child of the cursored node.
+    #[inline(always)]
+    pub fn down_info(&self) -> Option<&T> {
+        let down = self.cur_node().down.get()?;
+        Some(&self.access(down).info)
+    }
+
+    /// Returns the amount of child nodes of the cursored node.
     #[inline]
     pub fn cur_get_degree(&self) -> u16 {
         let Some(down) = self.cur_node().down.get() else {
@@ -400,12 +444,15 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         degree
     }
 
+    /// Moves the current cursor to the root node.
     #[inline(always)]
     pub fn cur_goto_root(&mut self) {
         self.cur = self.root;
         self.cur_dep = 0;
     }
 
+    /// Moves the current cursor to the parent node. Returns `Error::CursorAtEnd`
+    /// if the current node is the root node.
     #[inline(always)]
     pub fn cur_go_up(&mut self) -> Result<(), Error> {
         if self.cur_dep == 0 {
@@ -416,6 +463,8 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         Ok(())
     }
 
+    /// Goes back through the current route until a node of `coord` is found. Does nothing
+    /// and returns `Error::ItemNotExist` if `coord` does not exist in the route.
     #[inline(always)]
     pub fn cur_back_to(&mut self, coord: Coord<SZ>) -> Result<u16, Error> {
         for i in (0..=self.cur_depth()).rev() {
@@ -430,6 +479,8 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         Err(Error::ItemNotExist)
     }
 
+    /// Moves the current cursor to the left child. Returns `Error::CursorAtEnd`
+    /// if the current node is a leaf node.
     #[inline(always)]
     pub fn cur_go_down(&mut self) -> Result<(), Error> {
         let Some(down) = self.cur_node().down.get() else {
@@ -441,6 +492,8 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         Ok(())
     }
 
+    /// Moves the current cursor to the right sibling. Returns `Error::CursorAtEnd`
+    /// if the current node is the rightmost node.
     #[inline(always)]
     pub fn cur_go_right(&mut self) -> Result<(), Error> {
         let Some(right) = self.cur_node().right.get() else {
@@ -451,6 +504,7 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         Ok(())
     }
 
+    /// Finds a child node with `coord`.
     pub fn cur_find_next(&self, coord: Coord<SZ>) -> Option<&T> {
         let down = self.cur_node().down.get()?;
         let mut tmp_cur = self.access(down);
@@ -461,6 +515,7 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         Some(&tmp_cur.info)
     }
 
+    /// Finds a child node by the comparer function in children of cursored node.
     pub fn cur_find_max_child_by(&self, f: impl Fn(&T, &T) -> Ordering) -> Option<(Coord<SZ>, &T)> {
         let mut cur_find = self.access(self.cur_node().down.get()?);
         let mut max = cur_find;
@@ -473,6 +528,7 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         Some((max.coord, &max.info))
     }
 
+    /// Finds a child node with the minimum value in children of cursored node.
     #[inline(always)]
     pub fn cur_find_min_child(&self) -> Option<(Coord<SZ>, &T)>
     where
@@ -481,6 +537,7 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         self.cur_find_max_child_by(|a, b| b.cmp(a))
     }
 
+    /// Finds a child node with the maximum value in children of cursored node.
     #[inline(always)]
     pub fn cur_find_max_child(&self) -> Option<(Coord<SZ>, &T)>
     where
@@ -489,6 +546,8 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         self.cur_find_max_child_by(|a, b| a.cmp(b))
     }
 
+    /// Sets the current cursor at a child node with `coord`, creating such a node
+    /// if it did not exist.
     pub fn cur_set_next(&mut self, coord: Coord<SZ>) {
         if self.cur_go_down().is_err() {
             let node = self.new_node();
@@ -510,6 +569,7 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         self.cur_node_mut().coord = coord;
     }
 
+    /// Makes the child with `coord` the left child of the cursored node if it exists.
     pub fn cur_adj_left_child(&mut self, coord: Coord<SZ>) {
         if self.cur_go_down().is_err() {
             return;
@@ -534,6 +594,8 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         }
     }
 
+    /// Efficient function for resetting children of the cursored node.
+    ///
     /// Note: this doesn't check for repeated coordinates in `group`,
     /// which may lead to various unexpected troubles!
     pub fn cur_set_children<'a>(&mut self, group: impl IntoIterator<Item = &'a (Coord<SZ>, T)>)
@@ -569,8 +631,10 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         self.cur_go_up().unwrap();
     }
 
+    /// Deletes the cursored node and all of it descendents, then goes to the parent node.
+    /// If it is a root node, it sets the root's information to a default value.
     pub fn cur_delete(&mut self) {
-        let cur = self.cur.clone();
+        let cur = self.cur;
         let right = self.cur_node_mut().right.take();
 
         if self.cur_go_up().is_err() {
@@ -589,6 +653,7 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         self.cur_go_up().unwrap();
     }
 
+    /// Deletes left and right siblings of the cursored node.
     pub fn cur_delete_siblings(&mut self) {
         if self.cur_depth() == 0 {
             return;
@@ -600,6 +665,8 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         self.cur_go_down().unwrap();
     }
 
+    /// Establishes and walks through a route (starting from root) in the tree
+    /// according to the `rec` forcefully.
     pub fn enter_rec(&mut self, rec: &impl Rec<SZ>) {
         self.cur_goto_root();
         for &coord in rec.iter() {
@@ -607,10 +674,13 @@ impl<const SZ: usize, T: Default + Clone> Tree<SZ, T> {
         }
     }
 
+    /// Compresses the internal bump storage. Note: in the worst case, the peak RAM usage
+    /// may be doubled during compression.
     pub fn compress(&mut self) {
         *self = self.clone();
     }
 
+    /// Deletes everything and goes to the root node, as if it is newly created.
     pub fn clear(&mut self) {
         self.cur_goto_root();
         self.cur_delete();
@@ -661,6 +731,12 @@ impl<const SZ: usize, T: Default + Clone> Clone for Tree<SZ, T> {
             new_tree.cur_set_next(coord);
         }
         new_tree
+    }
+}
+
+impl<const SZ: usize, T: Default + Clone> Default for Tree<SZ, T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

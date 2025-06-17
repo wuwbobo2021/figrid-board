@@ -1,5 +1,6 @@
 use crate::{Coord, CoordState};
 
+/// A row on the board. The length is determined at runtime.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Row {
     data: u64,
@@ -11,22 +12,28 @@ impl Row {
     pub(crate) const W: u64 = 0b11;
     const LEN_OFFSET: u8 = 64 - 5;
 
+    /// Creates an empty row.
     pub fn new(len: u8) -> Self {
-        assert!(len >= 1u8 && len <= 26u8);
+        assert!((1u8..=26u8).contains(&len));
         Self {
             data: (len as u64) << Self::LEN_OFFSET,
         }
     }
 
+    /// Returns the length of the row.
     #[inline(always)]
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> u8 {
         (self.data >> Self::LEN_OFFSET) as u8
     }
 
+    /// Clears all stones in the row.
     pub fn clear(&mut self) {
         self.data = (self.len() as u64) << Self::LEN_OFFSET;
     }
 
+    /// Gets the raw value that represents the row, except the raw bits
+    /// for the row length. Used internally.
     #[inline(always)]
     pub fn get_raw(&self) -> u64 {
         self.data & !(0b11111 << Self::LEN_OFFSET)
@@ -37,6 +44,7 @@ impl Row {
         2 * pos
     }
 
+    /// Gets the [CoordState] at given index in the row.
     /// The index is unchecked; caller should make sure of `pos < len()`.
     #[inline(always)]
     pub fn get(&self, pos: u8) -> CoordState {
@@ -47,11 +55,15 @@ impl Row {
         }
     }
 
+    /// Iterates through [CoordState]s of the row.
     #[inline(always)]
-    pub fn iter(&self) -> std::iter::Map<std::ops::Range<u8>, impl FnMut(u8) -> CoordState> {
+    pub fn iter(
+        &self,
+    ) -> std::iter::Map<std::ops::Range<u8>, impl FnMut(u8) -> CoordState + use<'_>> {
         (0..self.len()).map(|i| self.get(i))
     }
 
+    /// Sets the [CoordState] at given index in the row.
     /// The index is unchecked; caller should make sure of `pos < len()`.
     #[inline(always)]
     pub fn set(&mut self, pos: u8, state: CoordState) {
@@ -94,6 +106,12 @@ impl From<&[CoordState]> for Row {
     }
 }
 
+impl<const SZ: usize> Default for Rows<SZ> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[test]
 fn row_test() {
     let mut row = Row::new(15);
@@ -114,6 +132,7 @@ fn row_test() {
     assert_eq!(row.get_raw(), 0b_00_00_00_00_00);
 }
 
+/// Storage of all [Row]s on the square board of size `SZ`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rows<const SZ: usize> {
     horizontal: [Row; SZ],  // [a1, b1...o1], [a2, b2...o2]...[a15, b15...o15]
@@ -125,6 +144,7 @@ pub struct Rows<const SZ: usize> {
 }
 
 impl<const SZ: usize> Rows<SZ> {
+    /// Creates a `Rows` for an empty board.
     pub fn new() -> Self {
         assert!(SZ >= 5 && SZ <= 26);
         let fake = Row::new(SZ as u8);
@@ -140,6 +160,7 @@ impl<const SZ: usize> Rows<SZ> {
         rows
     }
 
+    /// Clears all rows on the board.
     pub fn clear(&mut self) {
         self.horizontal = [Row::new(SZ as u8); SZ];
         self.vertical = [Row::new(SZ as u8); SZ];
@@ -153,6 +174,7 @@ impl<const SZ: usize> Rows<SZ> {
         }
     }
 
+    /// Returns the state at a coordinate, or `CoordState::Empty` if `coord` is null.
     #[inline(always)]
     pub fn get(&self, coord: Coord<SZ>) -> CoordState {
         let Some((x, y)) = coord.get() else {
@@ -161,11 +183,11 @@ impl<const SZ: usize> Rows<SZ> {
         self.horizontal[y as usize].get(x)
     }
 
+    /// Returns the horizontal, vertical, left and right diagonal [Row]s passing through
+    /// `coord`, or `None` if `coord` is null.
     #[inline]
     pub fn get_quad_rows(&self, coord: Coord<SZ>) -> Option<[Row; 4]> {
-        let Some((x, y)) = coord.get() else {
-            return None;
-        };
+        let (x, y) = coord.get()?;
 
         let row_diagonal_l = if x <= y {
             self.diagonal_l1[SZ - 1 - (y - x) as usize]
@@ -187,6 +209,7 @@ impl<const SZ: usize> Rows<SZ> {
         ])
     }
 
+    /// Sets the `CoordState` at `coord`, updating 4 rows passing through it.
     #[inline]
     pub fn set(&mut self, coord: Coord<SZ>, st: CoordState) {
         let Some((x, y)) = coord.get() else {

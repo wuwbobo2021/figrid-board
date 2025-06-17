@@ -10,6 +10,7 @@ use crate::{
 };
 
 /// Basic record structure without any evaluator or rule checker.
+///
 /// `SZ` is the board size, `LEN` is the maximum capacity (it should be more than `SZ*SZ`).
 #[derive(Clone, Debug)]
 pub struct BaseRec<const SZ: usize, const LEN: usize> {
@@ -115,13 +116,19 @@ impl<const SZ: usize, const LEN: usize> Rec<SZ> for BaseRec<SZ, LEN> {
     }
 }
 
-// Note: these traits can't be implemented automatically for all types with trait Record<SZ>
+// Note: these traits can't be implemented automatically for all types with trait Rec<SZ>
+
+impl<const SZ: usize, const LEN: usize> Default for BaseRec<SZ, LEN> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<const SZ: usize, const LEN: usize> FromStr for BaseRec<SZ, LEN> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut rec = Self::new();
-        rec.append_str(&s).map_err(|_| Error::ParseError)?;
+        rec.append_str(s).map_err(|_| Error::ParseError)?;
         Ok(rec)
     }
 }

@@ -5,15 +5,12 @@ use crate::{Coord, CoordState, Error, Rotation, Row};
 /// Trait for all types that store `Coord<SZ>` sequence in continuous memory
 /// and don't allow any coordinate value (except null) to be repeated.
 /// Any even index corresponds to a black stone, odd index means it is white.
-///
-/// Some wrapper (like `GameRec`) can be created in the future, for storing
-/// extra informations and ensuring some rules to be followed.
 pub trait Rec<const SZ: usize> {
     /// Returns a slice of all added coordinates.
     fn as_slice(&self) -> &[Coord<SZ>];
     /// Returns the state at a coordinate, or `CoordState::Empty` if `coord` is null.
     fn coord_state(&self, coord: Coord<SZ>) -> CoordState;
-    /// Returns the horizontal, vertical, left and right diagonal rows passing through
+    /// Returns the horizontal, vertical, left and right diagonal [Row]s passing through
     /// `coord`, or `None` if `coord` is null.
     fn get_quad_rows(&self, coord: Coord<SZ>) -> Option<[Row; 4]>;
     /// Count of all added coordinates.
@@ -78,7 +75,7 @@ pub trait Rec<const SZ: usize> {
     {
         let mut i: usize = 0;
         for c in coords {
-            if !self.add(c).is_ok() {
+            if self.add(c).is_err() {
                 return Err(i);
             }
             i += 1;
@@ -249,7 +246,7 @@ pub trait Rec<const SZ: usize> {
                 let st = self.coord_state(coord);
                 let ch = match st {
                     CoordState::Empty => {
-                        if dots.iter().find(|&&c| coord == c).is_some() {
+                        if dots.iter().any(|&c| coord == c) {
                             ch_dot
                         } else if x == 0 && y == 0 {
                             ch_bl
@@ -288,13 +285,13 @@ pub trait Rec<const SZ: usize> {
                 };
                 write!(f, "{ch}")?;
             }
-            write!(f, "\n")?;
+            writeln!(f)?;
         }
         write!(f, "    ")?;
         for h in 0..SIZE {
             write!(f, "{} ", crate::coord_x_letter(h))?;
         }
-        write!(f, "\n")?;
+        writeln!(f)?;
         Ok(())
     }
 }

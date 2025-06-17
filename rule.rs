@@ -1,13 +1,18 @@
 use crate::Row;
 
+/// The score of one side on a single [Row] calculated by a [Rule].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RowScore {
+    /// Counts for connected or grouped stones with strengths 1, 2, 3, 4.
     pub cnts: [u8; 4],
+    /// It is set to true when the count of strength 3 is greater than 1.
     pub flag_live_3: bool,
+    /// It is set to true when strength 5 of this side occurs in the row.
     pub flag_5: bool,
 }
 
 impl RowScore {
+    /// Creates an empty row score.
     pub fn new() -> Self {
         RowScore {
             cnts: [0; 4],
@@ -16,11 +21,16 @@ impl RowScore {
         }
     }
 
+    /// Adds `cnt` for strength `len`. The valid range of `len` is `[1, 5)`,
+    /// otherwise it will panic.
     #[inline(always)]
     pub fn add(&mut self, len: u8, cnt: u8) {
         self.cnts[(len - 1) as usize] += cnt;
     }
 
+    /// Adds another `RowScore` to make a sum. This is used to combine
+    /// scores of segments split from one row. Use [crate::RowsScore] when
+    /// summing scores of multiple `Row`s to avoid possible overflow.
     #[inline(always)]
     pub fn enter(&mut self, other: RowScore) {
         if other.flag_5 {
@@ -37,20 +47,33 @@ impl RowScore {
         }
     }
 
+    /// Returns the count of strength `len`.
     #[inline(always)]
     pub fn score_of_len(&self, len: u8) -> u8 {
         self.cnts[(len - 1) as usize]
     }
 }
 
+impl Default for RowScore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Represents a rule check method.
 pub trait Rule<const SZ: usize>: Clone + std::fmt::Debug {
+    /// The implementation should return a pair of properly calculated
+    /// [RowScore]s for the black and white on the given row.
     fn check_row(&self, row: Row) -> (RowScore, RowScore);
 }
 
 pub use serial_calc::{CaroSerCalc, FreeSerCalc, StdSerCalc};
+
+/// Rule implementations based on the serial counter running on CPU.
 mod serial_calc {
     use crate::*;
 
+    /// Counter for the lengths of continuous consistent states in the row.
     #[derive(PartialEq, Debug)]
     struct RowCounter<const SZ: usize> {
         len: u8,
@@ -58,6 +81,7 @@ mod serial_calc {
     }
 
     impl<const SZ: usize> RowCounter<SZ> {
+        /// Counts for the lengths of continuous consistent states in the row.
         /// This may panic if the length of the row is larger than `SZ`.
         pub fn count(row: Row) -> Self {
             let mut counter = RowCounter {
@@ -85,16 +109,19 @@ mod serial_calc {
             counter
         }
 
+        /// Returns the slice of counted values.
         #[inline(always)]
         pub fn get(&self) -> &[(CoordState, u8)] {
             &self.cnts[..self.len as usize]
         }
 
+        /// Iterates through counted values.
         #[inline(always)]
         pub fn iter(&self) -> std::slice::Iter<'_, (CoordState, u8)> {
             self.get().iter()
         }
 
+        /// Calculates a pair of `RowScore` with the `Segment` checker function.
         pub fn check(&self, f: impl Fn(&mut Segment<SZ>) -> RowScore) -> (RowScore, RowScore) {
             let mut sum_b = RowScore::new();
             let mut sum_w = RowScore::new();
@@ -176,11 +203,13 @@ mod serial_calc {
         }
     }
 
+    /// Represents a series of empty or non-empty positions cut from `RowCounter`,
+    /// in which connected stones belongs to *one* side.
     #[derive(Debug)]
     struct Segment<const SZ: usize> {
-        spaces: [u8; SZ],  //count of spaces = count + 1
-        conns: [Conn; SZ], //lengths of connected stones
-        count: usize,      //count of connections. index of array must be usize
+        spaces: [u8; SZ],  // count of spaces = count + 1
+        conns: [Conn; SZ], // lengths of connected stones
+        count: usize,      // count of connections. index of array must be usize
     }
 
     impl<const SZ: usize> Segment<SZ> {
@@ -198,17 +227,18 @@ mod serial_calc {
         }
     }
 
+    /// Serial (CPU) rule checker for the standard rule.
     #[derive(Clone, Debug)]
     pub struct StdSerCalc<const SZ: usize>;
 
     impl<const SZ: usize> StdSerCalc<SZ> {
-        fn segment_check(seg: &mut Segment<SZ>, caro: bool) -> RowScore {
+        fn segment_check(seg: &mut Segment<SZ>, caro_mode: bool) -> RowScore {
             let mut score = RowScore::new();
             if seg.count == 0 {
                 return score;
             }
 
-            if !caro {
+            if !caro_mode {
                 // space at boundary is unique (without risk of long connection)
                 seg.spaces[0] += 1;
                 seg.spaces[seg.count] += 1;
@@ -233,7 +263,9 @@ mod serial_calc {
                     continue;
                 }
                 if seg.conns[i].len == 5 {
-                    score.flag_5 = true;
+                    if !caro_mode || (seg.spaces[i] > 0 && seg.spaces[i + 1] > 0) {
+                        score.flag_5 = true;
+                    }
                     continue; // return score;
                 }
 
@@ -260,7 +292,7 @@ mod serial_calc {
 
             // count score for groups
             for i in 0..seg.count - 1 {
-                if seg.conns[i].r_grp == false {
+                if !seg.conns[i].r_grp {
                     continue;
                 }
                 let len_score = seg.conns[i].len + seg.conns[i + 1].len;
@@ -278,10 +310,10 @@ mod serial_calc {
                     && (len_with_r + seg.spaces[i + 2] + seg.conns[i + 2].len) == 5;
 
                 if l_valid {
-                    score.add(len_score, 1); //the left is valid
+                    score.add(len_score, 1); // the left is valid
                 }
                 if r_valid {
-                    score.add(len_score, 1); //the right is valid
+                    score.add(len_score, 1); // the right is valid
                 }
                 if r_dbl_grp {
                     // the only case of double grouping (occurs at the right side)
@@ -293,7 +325,7 @@ mod serial_calc {
                 if !(l_valid || r_valid || r_dbl_grp)
                     && len_with_r + (seg.spaces[i] - 1) + (seg.spaces[i + 2] - 1) >= 5
                 {
-                    score.add(len_score, 1); //borrowing
+                    score.add(len_score, 1); // borrowing
                 }
             }
 
@@ -470,6 +502,7 @@ mod serial_calc {
         );
     }
 
+    /// Serial (CPU) rule checker for the caro rule.
     #[derive(Clone, Debug)]
     pub struct CaroSerCalc<const SZ: usize>;
 
@@ -481,6 +514,7 @@ mod serial_calc {
         }
     }
 
+    /// Serial (CPU) rule checker for the freestyle rule.
     #[derive(Clone, Debug)]
     pub struct FreeSerCalc<const SZ: usize>;
 
@@ -533,7 +567,7 @@ mod serial_calc {
 
             // count score for groups
             for i in 0..seg.count - 1 {
-                if seg.conns[i].r_grp == false {
+                if !seg.conns[i].r_grp {
                     continue;
                 }
                 let len_with_r_no_sp = seg.conns[i].len + seg.conns[i + 1].len;
@@ -541,7 +575,7 @@ mod serial_calc {
                 let len_score = if len_with_r <= 5 {
                     len_with_r_no_sp
                 } else {
-                    len_with_r.min(5).saturating_sub(seg.spaces[i + 1])
+                    5_u8.saturating_sub(seg.spaces[i + 1])
                 };
                 if len_score == 0 {
                     continue;
@@ -559,10 +593,10 @@ mod serial_calc {
                     && (len_with_r + seg.spaces[i + 2] + seg.conns[i + 2].len) == 5;
 
                 if l_valid {
-                    score.add(len_score, 1); //the left is valid
+                    score.add(len_score, 1); // the left is valid
                 }
                 if r_valid {
-                    score.add(len_score, 1); //the right is valid
+                    score.add(len_score, 1); // the right is valid
                 }
                 if r_dbl_grp {
                     // the only case of double grouping (occurs at the right side)
@@ -574,7 +608,7 @@ mod serial_calc {
                 if !(l_valid || r_valid || r_dbl_grp)
                     && len_with_r + seg.spaces[i] + seg.spaces[i + 2] >= 5
                 {
-                    score.add(len_score, 1); //borrowing
+                    score.add(len_score, 1); // borrowing
                 }
             }
 

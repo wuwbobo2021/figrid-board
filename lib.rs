@@ -1,3 +1,7 @@
+//! A library for the Five-in-a-Row (Gomoku) game.
+//!
+//! This crate is looking for new owners interested in this game.
+
 mod coord;
 mod evaluator;
 mod rec;
@@ -16,7 +20,7 @@ pub use row::*;
 pub use rule::*;
 pub use tree::*;
 
-/// Possible errors returned by `figrid_board`.
+/// Possible errors returned from this crate.
 #[derive(Clone, Debug, PartialEq)]
 #[repr(u8)]
 pub enum Error {

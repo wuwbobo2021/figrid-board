@@ -5,11 +5,18 @@ use crate::{
 
 use std::time::{Duration, Instant};
 
+/// Trait for all possible evaluators. `SZ` is board size.
 pub trait Eval<const SZ: usize>: Rec<SZ> {
+    /// Sets timeout value for each turn, the execution time of `calc_next` must not exceed it.
     fn set_turn_timeout(&mut self, timeout: Duration);
+
+    /// Sets the maximum RAM usage in bytes, the evaluator must not use more at any timepoint.
     fn set_max_ram(&mut self, ram_max: usize);
+
+    /// Calculates the next move according to the rule.
     fn calc_next(&mut self) -> Coord<SZ>;
 
+    /// Calculates and places the next move.
     fn place_next(&mut self) -> Coord<SZ> {
         let coord = self.calc_next();
         if coord.is_real() {
@@ -26,6 +33,10 @@ pub type FreeEvaluator20 = Evaluator<20, { 20 * 20 + 16 }, FreeSerCalc<20>>;
 pub type CaroEvaluator15 = Evaluator<15, { 15 * 15 + 16 }, CaroSerCalc<15>>;
 pub type CaroEvaluator20 = Evaluator<20, { 20 * 20 + 16 }, CaroSerCalc<20>>;
 
+/// Currently, this is the only implementation of [Eval].
+///
+/// TODO: Implement alpha-beta algorithm.
+#[derive(Clone, Debug)]
 pub struct Evaluator<const SZ: usize, const LEN: usize, CH: Rule<SZ>> {
     rec: CheckerRec<SZ, LEN, CH>,
     t_max: Duration,
@@ -33,6 +44,7 @@ pub struct Evaluator<const SZ: usize, const LEN: usize, CH: Rule<SZ>> {
 }
 
 impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Evaluator<SZ, LEN, CH> {
+    /// Creates a new `Evaluator` with the given rule and turn timeout.
     pub fn new(rule: CH, turn_limit: Duration) -> Self {
         Self {
             rec: CheckerRec::new(rule),
@@ -90,8 +102,11 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Eval<SZ> for Evaluator<SZ,
         if self.is_full() {
             return Coord::new();
         }
-        let t_timeout = Instant::now() + self.t_max * 75 / 100 - Duration::from_millis(50);
 
+        let t_timeout = Instant::now() + self.t_max - Duration::from_millis(200);
+        let t_near_timeout = t_timeout - self.t_max * 25 / 100;
+
+        // The root of this tree corresponds to the last move in `self.rec`.
         let mut tree = EvalTree::new(&self.rec);
 
         let cnt_root_cands = tree.cur_expand(20);
@@ -116,15 +131,19 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Eval<SZ> for Evaluator<SZ,
 
         let mut depth_expand = 5;
         let mut cnt_loops = 0;
+        let mut cycle_duration = None;
         loop {
-            if Instant::now() >= t_timeout {
-                tree.cur_goto_root();
-                tree.cur_order_minimax();
-                tree.cur_go_down().unwrap();
-                return tree.cur_coord();
-            }
             if tree.inner.ram_used() > self.ram_max / 2 {
                 tree.compress();
+            }
+
+            let t_cycle_begin = Instant::now();
+            if let Some(&dur) = cycle_duration.as_ref() {
+                if t_cycle_begin + dur >= t_timeout {
+                    break;
+                }
+            } else if t_cycle_begin >= t_near_timeout {
+                break;
             }
 
             tree.cur_goto_root();
@@ -138,10 +157,17 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Eval<SZ> for Evaluator<SZ,
 
             cnt_loops += 1;
             if cnt_loops == 3 {
-                tree.cur_goto_root(); // XXX: not needed if above functions is correct
+                tree.cur_goto_root(); // XXX: not needed if above functions are correct
                 tree.cur_reduce_branches(5);
             }
+
+            cycle_duration.replace(Instant::now() - t_cycle_begin);
         }
+
+        tree.cur_goto_root();
+        tree.cur_order_minimax();
+        tree.cur_go_down().unwrap();
+        tree.cur_coord()
     }
 }
 
@@ -198,6 +224,8 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Rec<SZ> for Evaluator<SZ, 
     }
 }
 
+/// A tree with a record checker tied to the tree cursor. Each node contains
+/// a unified evaluation value.
 struct EvalTree<const SZ: usize, const LEN: usize, CH: Rule<SZ>> {
     inner: Tree<SZ, i16>,
     rec: CheckerRec<SZ, LEN, CH>,
@@ -243,6 +271,7 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> EvalTree<SZ, LEN, CH> {
     }
 
     #[inline(always)]
+    #[allow(unused)]
     pub fn cur_val(&self) -> i16 {
         *self.inner.cur_info()
     }
@@ -255,6 +284,16 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> EvalTree<SZ, LEN, CH> {
     #[inline(always)]
     pub fn cur_coord(&self) -> Coord<SZ> {
         self.inner.cur_coord()
+    }
+
+    #[inline(always)]
+    pub fn down_is_leaf(&self) -> Option<bool> {
+        self.inner.down_is_leaf()
+    }
+
+    #[inline(always)]
+    pub fn down_val(&self) -> Option<i16> {
+        self.inner.down_info().copied()
     }
 
     #[inline]
@@ -276,10 +315,8 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> EvalTree<SZ, LEN, CH> {
     #[inline(always)]
     pub fn cur_back_to(&mut self, coord: Coord<SZ>) -> Result<u16, Error> {
         let d_depth = self.inner.cur_back_to(coord)?;
-        if coord.is_real() {
-            self.rec.back_to(coord).unwrap();
-        } else {
-            self.rec.clear(); // root
+        for _ in 0..d_depth {
+            self.rec.undo().unwrap();
         }
         Ok(d_depth)
     }
@@ -324,6 +361,7 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> EvalTree<SZ, LEN, CH> {
         self.inner.compress();
     }
 
+    /// Sets choice candidates for the current node.
     #[inline(always)]
     pub fn cur_expand(&mut self, cnt_max: u16) -> u16 {
         let cnt = self
@@ -333,6 +371,7 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> EvalTree<SZ, LEN, CH> {
         cnt as u16
     }
 
+    /// Does [EvalTree::cur_expand] recursively to reach the specified relative depth.
     pub fn cur_expand_depth(&mut self, cnt_max: u16, depth: u16) {
         if depth == 0 {
             return;
@@ -353,6 +392,9 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> EvalTree<SZ, LEN, CH> {
         self.cur_go_up().unwrap();
     }
 
+    /// Does a postorder traversal under current node to determine all leftmost nodes,
+    /// goes back to the original node at last.
+    ///
     /// Note: this should be called right after `cur_expand_depth`.
     pub fn cur_order_minimax(&mut self) {
         if self.cur_is_leaf() {
@@ -360,23 +402,20 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> EvalTree<SZ, LEN, CH> {
         }
         let mut stack = Stack::new();
         loop {
-            if !self.cur_is_leaf() {
+            while !self.down_is_leaf().unwrap() {
                 stack.push(self.cur_coord());
                 self.cur_go_down().unwrap();
-                continue;
             }
 
-            let val = self.cur_val();
-            self.cur_go_up().unwrap();
+            let val = self.down_val().unwrap();
             self.cur_set_val(val);
-            let _ = stack.pop();
 
             while self.cur_go_right().is_err() {
                 let Some(upper) = stack.pop() else {
                     return;
                 };
                 self.cur_back_to(upper)
-                    .expect(&format!("{upper}  {:?}", self.rec));
+                    .unwrap_or_else(|_| panic!("{upper}  {:?}", self.rec));
 
                 let new_left = if self.rec.color_next().is_black() {
                     self.inner.cur_find_max_child()
@@ -391,6 +430,9 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> EvalTree<SZ, LEN, CH> {
         }
     }
 
+    /// Cuts right siblings at several levels (set by `cut_depth`) under current node,
+    /// goes back to the original node at last.
+    ///
     /// Note: this may be called after `cur_order_minimax`.
     pub fn cur_cut_branches(&mut self, cut_depth: u16) {
         let prev_depth = self.cur_depth();
@@ -405,6 +447,8 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> EvalTree<SZ, LEN, CH> {
         }
     }
 
+    /// Reduces choices with worst values under current node, until
+    /// the degree of current node reaches `target_deg`.
     pub fn cur_reduce_branches(&mut self, target_deg: u16) {
         let mut cur_deg = self.inner.cur_get_degree();
         while cur_deg > target_deg {

@@ -45,11 +45,11 @@ pub struct Coord<const SZ: usize> {
     y: u8,
 }
 
-/// The `x` or `y` value of a null coordinate
-pub const COORD_NULL_VAL: u8 = 0xff;
+/// The `x` or `y` value of a null coordinate.
+pub(crate) const COORD_NULL_VAL: u8 = 0xff;
 
 pub type Coord15 = Coord<15>;
-pub type Coord19 = Coord<19>;
+pub type Coord20 = Coord<20>;
 
 impl<const SZ: usize> Coord<SZ> {
     const SIZE: u8 = if SZ >= 5 && SZ <= 26 {
@@ -138,6 +138,10 @@ impl<const SZ: usize> Coord<SZ> {
     }
 
     /// Returns the coordinate (x, y), which contains invalid values if it is null.
+    ///
+    /// # Safety
+    ///
+    /// The caller must make sure that this coordinate is not null.
     #[inline(always)]
     pub unsafe fn get_unchecked(&self) -> (u8, u8) {
         (self.x, self.y)
@@ -180,6 +184,12 @@ impl<const SZ: usize> Coord<SZ> {
     }
 }
 
+impl<const SZ: usize> Default for Coord<SZ> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const SZ: usize> FromStr for Coord<SZ> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -203,7 +213,7 @@ impl<const SZ: usize> Coord<SZ> {
     /// Returns a coordinate and the parsed string length on success.
     #[inline]
     pub(crate) fn parse_str(str_coords: &str) -> Option<(Self, usize)> {
-        const ALPHABET: &'static str = "abcdefghijklmnopqrstuvwxyz";
+        const ALPHABET: &str = "abcdefghijklmnopqrstuvwxyz";
         let alphabet = &ALPHABET[..SZ];
 
         let mut len_checked: usize = 0;
@@ -216,7 +226,7 @@ impl<const SZ: usize> Coord<SZ> {
                 len_checked += i + 1;
                 // parse the possible coord y
                 let mut num: Option<u32> = None;
-                while let Some((_, ch)) = itr.next() {
+                for (_, ch) in itr {
                     if !ch.is_ascii_digit() {
                         break;
                     }
@@ -286,7 +296,7 @@ impl<const SZ: usize> Coord<SZ> {
     /// assert_eq!(coord.rotate(FlipRightDiagonal).unwrap(), (13, 14));
     /// assert_eq!(coord.rotate(FlipRightDiagonal).rotate(FlipRightDiagonal.reverse()), coord);
     /// assert_eq!(coord.rotate(FlipVertical.add(CentralSymmetric)),
-    /// 	coord.rotate(FlipHorizontal));
+    ///     coord.rotate(FlipHorizontal));
     /// ```
     #[inline(always)]
     pub fn rotate(&self, rotation: Rotation) -> Coord<SZ> {

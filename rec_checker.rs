@@ -2,26 +2,28 @@ use std::{fmt::Display, ops::Index};
 
 use crate::{
     BaseRec,
-    CaroSerCalc,
     Coord,
     CoordState,
     Error,
-    FreeSerCalc,
     Rec, // trait
     Row,
     RowScore,
     Rule,
-    StdSerCalc,
 };
 
+/// The sum of [RowScore]s for one side.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RowsScore {
+    /// Counts for connected or grouped stones with strengths 1, 2, 3, 4.
     pub cnts: [u16; 4],
+    /// Count of rows where the count of strength 3 is greater than 1.
     pub cnt_live_3: u16,
+    /// It is set to true when this side reaches strength 5 on any row.
     pub flag_5: bool,
 }
 
 impl RowsScore {
+    /// Creates an empty score sum.
     pub fn new() -> Self {
         Self {
             cnts: [0; 4],
@@ -30,10 +32,12 @@ impl RowsScore {
         }
     }
 
+    /// Clears the score sum as if it's newly created.
     pub fn clear(&mut self) {
         *self = Self::new();
     }
 
+    /// Updates the score sum for the change in a single row.
     pub fn update(&mut self, row_bef: RowScore, row_aft: RowScore) {
         for i in 0..4 {
             self.cnts[i] += row_aft.cnts[i] as u16;
@@ -54,7 +58,16 @@ impl RowsScore {
     }
 }
 
+impl Default for RowsScore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RowsScore {
+    /// Calculates a static evaluation value with the current sums of both sides and the
+    /// color of the next move. greater value means greater advantage for the black side.
+    #[allow(clippy::eq_op)]
     pub fn unify(sum_b: &Self, sum_w: &Self, color_next: CoordState) -> i16 {
         if sum_b.flag_5 {
             return i16::MAX;
@@ -64,24 +77,24 @@ impl RowsScore {
         }
         // excluded connected 5 from now on
         if sum_b.cnts[4 - 1] > 0 && color_next.is_black() {
-            return i16::MAX;
+            return i16::MAX - 1;
         }
         if sum_w.cnts[4 - 1] > 0 && color_next.is_white() {
-            return i16::MIN;
+            return i16::MIN + 1;
         }
         // excluded connected 4 for self's turn from now on
         if sum_b.cnts[4 - 1] > 1 {
-            return i16::MAX; // here, color_next is white, sum_w.cnts[4 - 1] == 0
+            return i16::MAX - 1; // here, color_next is white, sum_w.cnts[4 - 1] == 0
         }
         if sum_w.cnts[4 - 1] > 1 {
-            return i16::MIN; // here, color_next is black, sum_b.cnts[4 - 1] == 0
+            return i16::MIN + 1; // here, color_next is black, sum_b.cnts[4 - 1] == 0
         }
         // excluded double 4 on opponent's turn from now on
         if sum_b.cnt_live_3 > 0 && sum_w.cnts[4 - 1] == 0 && color_next.is_black() {
-            return i16::MAX;
+            return i16::MAX - 2;
         }
         if sum_w.cnt_live_3 > 0 && sum_b.cnts[4 - 1] == 0 && color_next.is_white() {
-            return i16::MIN;
+            return i16::MIN + 2;
         }
         // excluded prior live 3 for self's turn from now on
 
@@ -89,37 +102,45 @@ impl RowsScore {
 
         // 4 with live 3, not sure in a few cases
         if sum_b.cnts[4 - 1] > 0 && sum_b.cnt_live_3 > 0 {
-            sum += 64; // here, color_next is white, sum_w.cnts[4 - 1] == 0
+            sum += 128; // here, color_next is white, sum_w.cnts[4 - 1] == 0
         }
         if sum_w.cnts[4 - 1] > 0 && sum_w.cnt_live_3 > 0 {
-            sum -= 64; // here, color_next is black, sum_b.cnts[4 - 1] == 0
+            sum -= 128; // here, color_next is black, sum_b.cnts[4 - 1] == 0
         }
 
         // prior double live 3, opponent's turn, not sure in a few cases
-        if sum_b.cnt_live_3 > 1 && sum_w.cnts[4 - 1] == 0 && sum_w.cnts[3 - 1] == 0 {
-            sum += 64; // here, color_next is white
+        if sum_b.cnt_live_3 > 1 {
+            sum += 64; // here, color_next is white, sum_w.cnts[4 - 1] == 0
+            if sum_w.cnts[3 - 1] == 0 {
+                sum += 64;
+            }
         }
-        if sum_w.cnt_live_3 > 1 && sum_b.cnts[4 - 1] == 0 && sum_b.cnts[3 - 1] == 0 {
-            sum -= 64; // here, color_next is black
+        if sum_w.cnt_live_3 > 1 {
+            sum -= 64; // here, color_next is black, sum_b.cnts[4 - 1] == 0
+            if sum_b.cnts[3 - 1] == 0 {
+                sum -= 64;
+            }
         }
 
-        sum += (1 * sum_b.cnts[1 - 1]
-            + 4 * sum_b.cnts[2 - 1]
-            + 16 * sum_b.cnts[3 - 1]
-            + 32 * sum_b.cnt_live_3
-            + 64 * sum_b.cnts[4 - 1]) as i16;
-        sum -= (1 * sum_w.cnts[1 - 1]
-            + 4 * sum_w.cnts[2 - 1]
-            + 16 * sum_w.cnts[3 - 1]
-            + 32 * sum_w.cnt_live_3
-            + 64 * sum_w.cnts[4 - 1]) as i16;
+        // XXX: making improvement here may improve the overall performance significantly.
+        sum += (sum_b.cnts[1 - 1]
+            + (sum_b.cnts[2 - 1] << 2)
+            + (sum_b.cnts[3 - 1] << 4)
+            + (sum_b.cnt_live_3 << 5)
+            + (sum_b.cnts[4 - 1] << 6)) as i16;
+        sum -= (sum_w.cnts[1 - 1]
+            + (sum_w.cnts[2 - 1] << 2)
+            + (sum_w.cnts[3 - 1] << 4)
+            + (sum_w.cnt_live_3 << 5)
+            + (sum_w.cnts[4 - 1] << 6)) as i16;
         sum
     }
 }
 
 type RowScorePair = (RowScore, RowScore);
 
-/// Record structure with a fixed rule checker.
+/// Record structure with a fixed [Rule] checker.
+///
 /// `SZ` is the board size, `LEN` is the maximum capacity.
 #[derive(Clone, Debug)]
 pub struct CheckerRec<const SZ: usize, const LEN: usize, CH: Rule<SZ>> {
@@ -141,13 +162,6 @@ pub struct CheckerRec<const SZ: usize, const LEN: usize, CH: Rule<SZ>> {
     grid_cand: [[bool; SZ]; SZ],
     cand_tmp_list: [(Coord<SZ>, i16); LEN],
 }
-
-pub type StdCheckerRec15 = CheckerRec<15, { 15 * 15 + 16 }, StdSerCalc<15>>;
-pub type StdCheckerRec20 = CheckerRec<15, { 20 * 20 + 16 }, StdSerCalc<20>>;
-pub type FreeCheckerRec15 = CheckerRec<15, { 15 * 15 + 16 }, FreeSerCalc<15>>;
-pub type FreeCheckerRec20 = CheckerRec<20, { 20 * 20 + 16 }, FreeSerCalc<20>>;
-pub type CaroCheckerRec15 = CheckerRec<15, { 15 * 15 + 16 }, CaroSerCalc<15>>;
-pub type CaroCheckerRec20 = CheckerRec<20, { 20 * 20 + 16 }, CaroSerCalc<20>>;
 
 impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> CheckerRec<SZ, LEN, CH> {
     /// Returns an empty record.
@@ -177,25 +191,29 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> CheckerRec<SZ, LEN, CH> {
         }
     }
 
+    /// Returns a pair of row score sums for the black side and the white side.
     #[inline(always)]
     pub fn score_sum(&self) -> (RowsScore, RowsScore) {
         (self.sum_b.clone(), self.sum_w.clone())
     }
 
+    /// Returns a static evaluation value for the current situation;
+    /// greater value means greater advantage for the black side.
     #[inline(always)]
     pub fn score_unified(&self) -> i16 {
         RowsScore::unify(&self.sum_b, &self.sum_w, self.color_next())
     }
 
+    /// Returns true if one side has won or the board is full of stones.
     pub fn is_finished(&self) -> bool {
         self.sum_b.flag_5 || self.sum_w.flag_5 || self.is_full()
     }
 
+    /// Gets mutable references of pairs of row scores for horizontal, vertical,
+    /// left and right diagonal rows passing through `coord`.
     #[inline(always)]
     fn quad_score_pairs(&mut self, coord: Coord<SZ>) -> Option<[&mut RowScorePair; 4]> {
-        let Some((x, y)) = coord.get() else {
-            return None;
-        };
+        let (x, y) = coord.get()?;
 
         let row_diagonal_l = if x <= y {
             &mut self.diagonal_l1[SZ - 1 - (y - x) as usize]
@@ -217,6 +235,8 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> CheckerRec<SZ, LEN, CH> {
         ])
     }
 
+    /// Writes candidates for the next move based on the static evaluation.
+    /// Returns the amount of written candidates.
     pub fn write_candidates(&mut self, out_space: &mut [(Coord<SZ>, i16)]) -> usize {
         if out_space.is_empty() || self.is_finished() {
             return 0;
@@ -250,9 +270,15 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> CheckerRec<SZ, LEN, CH> {
             cand_list.sort_unstable_by(|a, b| a.1.cmp(&b.1));
         }
 
-        let selected = &cand_list[..out_space.len().min(cand_list.len())];
-        out_space[..selected.len()].copy_from_slice(selected);
-        selected.len()
+        let mut selected_len = out_space.len().min(cand_list.len());
+        if cnt_raw > 0 && (cand_list[0].1 >= i16::MAX - 2 || cand_list[0].1 <= i16::MIN + 2) {
+            // the best choice means sure win or sure lose
+            selected_len = 1;
+        }
+
+        let selected = &cand_list[..selected_len];
+        out_space[..selected_len].copy_from_slice(selected);
+        selected_len
     }
 }
 
@@ -293,6 +319,7 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Rec<SZ> for CheckerRec<SZ,
     }
 
     #[inline]
+    #[allow(clippy::needless_range_loop)]
     fn add(&mut self, coord: Coord<SZ>) -> Result<(), Error> {
         if self.is_finished() {
             return Err(Error::RecIsFinished);
@@ -334,6 +361,7 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Rec<SZ> for CheckerRec<SZ,
     }
 
     #[inline]
+    #[allow(clippy::needless_range_loop)]
     fn undo(&mut self) -> Result<Coord<SZ>, Error> {
         let coord = self.last_coord().ok_or(Error::RecIsEmpty)?;
         self.rec.undo()?;
@@ -373,7 +401,7 @@ impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Rec<SZ> for CheckerRec<SZ,
     }
 }
 
-// Note: these traits can't be implemented automatically for all types with trait Record<SZ>
+// Note: these traits can't be implemented automatically for all types with trait Rec<SZ>
 
 impl<const SZ: usize, const LEN: usize, CH: Rule<SZ>> Index<usize> for CheckerRec<SZ, LEN, CH> {
     type Output = Coord<SZ>;
